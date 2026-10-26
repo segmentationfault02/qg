@@ -60,7 +60,10 @@ Deno.serve(async (req) => {
   catch { return out({ erreur: "json_invalide" }, 400); }
 
   const now = new Date();
-  const aujourdHui = zurichDate(now), hier = zurichDate(new Date(now.getTime() - 86400000));
+  const aujourdHui = zurichDate(now);
+  const heureZ = +new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Zurich", hour: "2-digit", hour12: false }).format(now);
+  // Envoi le soir (après 18h) : l'activité est celle du jour. Envoi le matin : celle de la veille.
+  const hier = heureZ >= 18 ? aujourdHui : zurichDate(new Date(now.getTime() - 86400000));
   const res: Record<string, unknown> = {};
   try {
     const nuit = {
