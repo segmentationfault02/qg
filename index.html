@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-smr7Blc0700Asx44EuLcRsnrBO3YhKB5ofLGfZtRsY8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-NUDjkpytLgfRW5V0Nf2G0KHEY8wTpBS2uATo+CbXFO0='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -226,7 +226,7 @@ const sum = (a,f) => a.reduce((s,x)=>s+(f(x)||0),0);
 const S = {
   db:null, dl:null, dbState:"loading",
   loaded:{},
-  app:{}, journal:{}, aliments:{}, achats:[], seancesHist:[], poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
+  app:{}, journal:{}, aliments:{}, achats:[], seancesHist:[], sante:{}, poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
   view:"accueil", sheet:null,
   ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
@@ -425,6 +425,9 @@ VIEWS.accueil = { title:"QG", body(){
   h += '</section>';
 
 
+  // Sommeil et énergie
+  { const {n, j} = santeResume(); if (n || j) h += '<section class="card tap" data-act="goSante" style="cursor:pointer;gap:6px"><span class="eyebrow">Sommeil et énergie</span><div class="row wrap-r" style="gap:14px">'+(n?'<span><b class="num">'+dureeTxt(n.sommeilMin)+'</b> <span class="small muted">nuit du '+fShort(n.date)+'</span></span>':'')+(j?'<span><b class="num">'+Math.round(j.kcalTotal)+' kcal</b> <span class="small muted">brûlées le '+fShort(j.date)+'</span></span>':'')+(j&&j.pas!=null?'<span><b class="num">'+Math.round(j.pas).toLocaleString("fr-CH")+'</b> <span class="small muted">pas</span></span>':'')+'</div></section>'; }
+
   // Agenda du jour
   h += '<section class="card"><div class="card-h"><span class="eyebrow">Aujourd\'hui</span><button class="btn sm" data-act="go" data-v="agenda">Agenda</button></div>'+(agDoc.sousTitre?'<div class="small muted">'+esc(agDoc.sousTitre)+'</div>':'');
   if (!items.length) h += '<div class="empty">Rien de prévu pour aujourd\'hui.</div>';
@@ -480,7 +483,8 @@ function hevyBlock(dateS, nom){
   if (!h){ setTimeout(()=>loadHevy(dateS, nom), 0); return '<div class="small muted">Chargement de ta séance Hevy…</div>'; }
   if (h.loading) return '<div class="small muted">Chargement de ta séance Hevy…</div>';
   if (h.err) return '<div class="row"><span class="small up grow">'+esc(h.err)+'</span><button class="btn sm" data-act="hevyReload" data-k="'+esc(key)+'">Réessayer</button></div>';
-  const d = h.data; const faite = d.derniereFois && ymd(new Date(d.derniereFois))===dateS;
+  const d = h.data; if (!d || !Array.isArray(d.exercices)) return '<div class="small muted">Séance introuvable dans Hevy.</div>';
+  const faite = d.derniereFois && ymd(new Date(d.derniereFois))===dateS;
   const open = S.ui.hevyOpen; const ex = d.exercices||[]; const shown = open ? ex : ex.slice(0,4);
   let o = '<div class="spread"><span class="small"><b>'+esc(d.titre)+'</b> · '+ex.length+' exercices · '+sum(ex,e=>e.series.filter(x=>x.type!=="warmup").length)+' séries</span>'+(faite?'<span class="chip good">Faite</span>':'')+'</div><div class="list">';
   o += shown.map(e=>{ const work = e.series.filter(x=>x.type!=="warmup"); const pl = work[0] && work[0].plage; const reps = pl && pl.start ? pl.start+(pl.end&&pl.end!==pl.start?"-"+pl.end:"") : (work[0] && work[0].reps) || "";
@@ -509,7 +513,8 @@ function tripCard(t, i, act){
 }
 /* ---------- CORPS ---------- */
 VIEWS.corps = { title:"Corps", body(){
-  let h = seg("corpsTab", S.ui.corpsTab, [["poids","Poids"],["mesures","Mensurations"],["tension","Tension"]]);
+  let h = seg("corpsTab", S.ui.corpsTab, [["poids","Poids"],["mesures","Mesures"],["tension","Tension"],["sante","Santé"]]);
+  if (S.ui.corpsTab==="sante") return h + santeView();
   if (S.ui.corpsTab==="poids"){
     const P = poidsStats(), t = today(), pT = S.poids[t];
     h += '<section class="card"><span class="eyebrow">Pesée du '+fShort(t)+'</span><form data-form="poids" class="row"><input class="inp big-inp num grow" id="poids-corps" inputmode="decimal" placeholder="'+(P?kg(P.last.kg):"82.0")+'" value="'+(pT?String(pT.kg):"")+'" aria-label="Poids en kg"><button class="btn pri" type="submit">'+(pT?"Modifier":"Noter")+'</button></form><div class="hint">Le matin, à jeun, après les toilettes. Même balance.</div></section>';
@@ -601,6 +606,36 @@ function mesCard(k,l,bon,col,row){ const L = mesSeries(k), last = L[L.length-1],
   const good = (d>0&&bon==="up")||(d<0&&bon==="down");
   return '<button class="mcard" style="grid-column:'+col+';grid-row:'+row+'" data-act="sheet" data-s="mesure" data-k="'+k+'"><span class="ml">'+l+'</span><span class="mv"><b class="num">'+(last?kg(last.v):"–")+'</b> cm</span>'+
     '<span class="md num" style="color:'+(d?(good?"var(--good)":"var(--warn)"):"var(--muted)")+'">'+(d?(d>0?"▲ +":"▼ ")+kg(d):(prev?"= stable":""))+'</span></button>'; }
+const dureeTxt = m => m==null ? "–" : Math.floor(m/60)+"h"+pad(Math.round(m%60));
+function santeDerniers(champ){ return Object.keys(S.sante).sort().reverse().map(d=>S.sante[d]).filter(x=>x && typeof x[champ]==="number"); }
+function santeResume(){ const n = santeDerniers("sommeilMin")[0], j = santeDerniers("kcalTotal")[0]; return {n, j}; }
+function barChart(items, unite, ref){ // items: [{label, v, v2}]
+  if (!items.length) return "";
+  const W=340,H=140,B=18,T=8, mx = Math.max(...items.map(x=>Math.max(x.v||0, x.v2||0)), ref||0, 1), bw = (W-8)/items.length;
+  let s = '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Graphique '+unite+'">';
+  if (ref) s += '<line x1="4" x2="'+(W-4)+'" y1="'+(H-B-(H-B-T)*ref/mx).toFixed(1)+'" y2="'+(H-B-(H-B-T)*ref/mx).toFixed(1)+'" stroke="var(--line)" stroke-dasharray="3 3"/>';
+  items.forEach((x,i)=>{ const X = 4+i*bw; const two = x.v2!=null; const w = two ? bw*0.36 : bw*0.62;
+    const h1 = (H-B-T)*(x.v||0)/mx; s += '<rect x="'+(X+(two?bw*0.12:bw*0.19)).toFixed(1)+'" y="'+(H-B-h1).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+Math.max(0,h1).toFixed(1)+'" rx="2" fill="var(--accent)"/>';
+    if (two){ const h2 = (H-B-T)*(x.v2||0)/mx; s += '<rect x="'+(X+bw*0.52).toFixed(1)+'" y="'+(H-B-h2).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+Math.max(0,h2).toFixed(1)+'" rx="2" fill="var(--good)"/>'; }
+    if (i%3===0 || items.length<10) s += '<text x="'+(X+bw/2).toFixed(1)+'" y="'+(H-5)+'" text-anchor="middle">'+esc(x.label)+'</text>'; });
+  return s+'</svg>';
+}
+function santeView(){
+  const {n, j} = santeResume(); let h = '';
+  if (!n && !j) return h + '<section class="card"><span class="eyebrow">Sommeil et énergie</span><div class="empty">Aucune donnée reçue pour l\'instant. Elles arriveront dès que ton Raccourci iPhone aura tourné une première fois.</div></section>';
+  if (n) h += '<section class="card"><div class="card-h"><span class="eyebrow">Dernière nuit · '+fShort(n.date)+'</span>'+(n.fcRepos?'<span class="chip">FC repos '+Math.round(n.fcRepos)+'</span>':'')+'</div><div class="big num">'+dureeTxt(n.sommeilMin)+'</div>'+
+    ((n.coucher||n.lever)?'<div class="small muted">Couché '+hfr(n.coucher||"")+' · levé '+hfr(n.lever||"")+'</div>':'')+
+    ((n.profondMin!=null||n.remMin!=null)?'<div class="grid3"><div class="stat"><span class="k">Profond</span><span class="v num">'+dureeTxt(n.profondMin)+'</span></div><div class="stat"><span class="k">Paradoxal</span><span class="v num">'+dureeTxt(n.remMin)+'</span></div><div class="stat"><span class="k">Léger</span><span class="v num">'+dureeTxt(n.legerMin)+'</span></div></div>':'')+'</section>';
+  if (j){ const jr = S.journal[j.date] ? journalStats(S.journal[j.date]).mange.kcal : null; const bil = jr!=null ? Math.round(jr - j.kcalTotal) : null;
+    h += '<section class="card"><span class="eyebrow">Énergie · '+fShort(j.date)+'</span><div class="grid3"><div class="stat"><span class="k">Brûlé</span><span class="v num">'+Math.round(j.kcalTotal)+'</span></div><div class="stat"><span class="k">Dont actif</span><span class="v num">'+Math.round(j.kcalActives||0)+'</span></div><div class="stat"><span class="k">Pas</span><span class="v num">'+(j.pas!=null?Math.round(j.pas).toLocaleString("fr-CH"):"–")+'</span></div></div>'+
+      (bil!=null?'<div class="spread"><span class="small">Mangé '+Math.round(jr)+' kcal (journal diet)</span><span class="chip '+(bil>0?'warn':'good')+'">'+(bil>0?'+':'')+bil+' kcal</span></div><div class="hint">Écart entre ce que tu as mangé et ce que ta montre a mesuré. Négatif : déficit.</div>':'<div class="hint">Coche tes repas dans le Journal diet pour voir ton bilan mangé moins brûlé.</div>')+'</section>'; }
+  const days = []; for (let i=29;i>=0;i--) days.push(addDays(today(),-i));
+  const som = days.map(d=>({label:String(parseYmd(d).getDate()), v:(S.sante[d]&&S.sante[d].sommeilMin||0)/60}));
+  if (som.some(x=>x.v)) h += '<section class="card"><span class="eyebrow">Sommeil · 30 jours (heures)</span>'+barChart(som,"sommeil",7)+'<div class="hint">Ligne pointillée : 7 h.</div></section>';
+  const en = days.map(d=>({label:String(parseYmd(d).getDate()), v:(S.sante[d]&&S.sante[d].kcalTotal)||0, v2:S.journal[d]?journalStats(S.journal[d]).mange.kcal:0}));
+  if (en.some(x=>x.v)) h += '<section class="card"><span class="eyebrow">Brûlé et mangé · 30 jours (kcal)</span>'+barChart(en,"kcal")+'<div class="row small muted" style="gap:14px"><span><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;vertical-align:middle"></i> brûlé</span><span><i style="display:inline-block;width:10px;height:10px;background:var(--good);border-radius:2px;vertical-align:middle"></i> mangé</span></div></section>';
+  return h;
+}
 function journalView(){
   const d = S.ui.jourDiet, saved = !!S.journal[d], j = journalOf(d), st = journalStats(j);
   let h = '<div class="spread"><button class="icon-btn" data-act="jDay" data-n="-1" aria-label="Jour précédent">‹</button><h2 class="h2 cap">'+(d===today()?"Aujourd\'hui":fDay(d))+'</h2><button class="icon-btn" data-act="jDay" data-n="1" aria-label="Jour suivant">›</button></div>';
@@ -987,6 +1022,7 @@ const ACT = {
   async objDone(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).map(o=>o.id===d.id?{...o,fait:!o.fait}:o); }); }catch(e){} },
   async objDel(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).filter(o=>o.id!==d.id); }); }catch(e){} },
   async export(){ await doExport(); },
+  goSante(){ S.ui.corpsTab = "sante"; ACT.go({v:"corps"}); },
   hevyToggle(){ S.ui.hevyOpen = !S.ui.hevyOpen; render(); },
   hevyReload(d){ const [dt, nom] = d.k.split("|"); loadHevy(dt, nom, true); render(); },
   trMode(d){ const T = S.sheet.tr; T.heure = val("tr-heure"); T.arrive = d.k==="arr"; keepSheetFields(); renderSheet(); },
@@ -1395,7 +1431,7 @@ async function doExport(){
 /* ================= SYNCHRO (Supabase) ================= */
 const SB_URL = "https://uzaywupafqbkgupnuege.supabase.co";
 const SB_KEY = "sb_publishable_o-WPy3WbBHjzq4tjvN2fEQ_hE4jk1Qb";
-const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","seances"];
+const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","seances","sante"];
 const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:"qg-auth"}}) : null;
 const Store = { rows:{}, subs:{}, uid:null,
   emit(col){ const docs = Object.keys(this.rows).filter(p=>p.startsWith(col+"/")).map(p=>{ const o=this.rows[p]; return {id:p.slice(col.length+1), exists:true, data:()=>o}; });
@@ -1500,8 +1536,8 @@ async function start(session){
 async function launch(session){
   if (started) return; started = true;
   Store.uid = session.user.id; S.db = dbAdapter; S.dbState = "ok"; S.dl = true;
-  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",seances:"seancesHist"}[c];
-    const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines","journal","aliments"].includes(c);
+  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",seances:"seancesHist",sante:"sante"}[c];
+    const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines","journal","aliments","sante"].includes(c);
     sub(c, L => { S[m] = asMap ? byId(L) : L; }); });
   render();
   try { await Store.loadAll(); } catch(e){ toast("Impossible de charger tes données. Vérifie ta connexion.", true); }
