@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-NUDjkpytLgfRW5V0Nf2G0KHEY8wTpBS2uATo+CbXFO0='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AeJ+NfRQWh/Vt7qTvJqPsKOOQ7GKfkQ3O+y4CSEtLTQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -405,6 +405,9 @@ VIEWS.accueil = { title:"QG", body(){
   const tr = S.app.training || {};
   let h = "";
 
+  // Raccourcis
+  h += '<div class="row" style="gap:8px"><a class="btn grow" href="shortcuts://run-shortcut?name=Ouvrir%20Zepp">Ouvrir Zepp</a></div>';
+
   // Séance
   h += '<section class="card"><div class="card-h"><span class="eyebrow">Séance du jour</span>'+(tr.programme?'<span class="chip">'+esc(tr.programme)+'</span>':'')+'</div>';
   if (loading("app")) h += '<div class="muted">…</div>';
@@ -424,9 +427,6 @@ VIEWS.accueil = { title:"QG", body(){
   if (P) h += '<div class="grid3"><div class="stat"><span class="k">Moy. 7 j</span><span class="v num">'+kg(P.avg)+'</span></div><div class="stat"><span class="k">Dernière</span><span class="v num">'+kg(P.last.kg)+'</span></div><div class="stat"><span class="k">Le</span><span class="v">'+fShort(P.last.d)+'</span></div></div>';
   h += '</section>';
 
-
-  // Sommeil et énergie
-  { const {n, j} = santeResume(); if (n || j) h += '<section class="card tap" data-act="goSante" style="cursor:pointer;gap:6px"><span class="eyebrow">Sommeil et énergie</span><div class="row wrap-r" style="gap:14px">'+(n?'<span><b class="num">'+dureeTxt(n.sommeilMin)+'</b> <span class="small muted">nuit du '+fShort(n.date)+'</span></span>':'')+(j?'<span><b class="num">'+Math.round(j.kcalTotal)+' kcal</b> <span class="small muted">brûlées le '+fShort(j.date)+'</span></span>':'')+(j&&j.pas!=null?'<span><b class="num">'+Math.round(j.pas).toLocaleString("fr-CH")+'</b> <span class="small muted">pas</span></span>':'')+'</div></section>'; }
 
   // Agenda du jour
   h += '<section class="card"><div class="card-h"><span class="eyebrow">Aujourd\'hui</span><button class="btn sm" data-act="go" data-v="agenda">Agenda</button></div>'+(agDoc.sousTitre?'<div class="small muted">'+esc(agDoc.sousTitre)+'</div>':'');
@@ -513,8 +513,8 @@ function tripCard(t, i, act){
 }
 /* ---------- CORPS ---------- */
 VIEWS.corps = { title:"Corps", body(){
-  let h = seg("corpsTab", S.ui.corpsTab, [["poids","Poids"],["mesures","Mesures"],["tension","Tension"],["sante","Santé"]]);
-  if (S.ui.corpsTab==="sante") return h + santeView();
+  if (S.ui.corpsTab==="sante") S.ui.corpsTab = "poids";
+  let h = seg("corpsTab", S.ui.corpsTab, [["poids","Poids"],["mesures","Mensurations"],["tension","Tension"]]);
   if (S.ui.corpsTab==="poids"){
     const P = poidsStats(), t = today(), pT = S.poids[t];
     h += '<section class="card"><span class="eyebrow">Pesée du '+fShort(t)+'</span><form data-form="poids" class="row"><input class="inp big-inp num grow" id="poids-corps" inputmode="decimal" placeholder="'+(P?kg(P.last.kg):"82.0")+'" value="'+(pT?String(pT.kg):"")+'" aria-label="Poids en kg"><button class="btn pri" type="submit">'+(pT?"Modifier":"Noter")+'</button></form><div class="hint">Le matin, à jeun, après les toilettes. Même balance.</div></section>';
