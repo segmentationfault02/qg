@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-9Nv5gjBHSbzzv/9eVachvfxLmT3ksNK5BlQqwij+1No='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Lc532bxRw2t5V2mqXWLPcLPVL6HeBq5hoIcQn2zhp0M='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -153,6 +153,16 @@ table.tbl{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-nume
 .tbl th:first-child,.tbl td:first-child{text-align:left}
 .tbl th{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.04em}
 .up{color:var(--warn)} .down{color:var(--good)}
+.body-grid{display:grid;grid-template-columns:1fr minmax(72px,.85fr) 1fr;gap:8px}
+.mcard{appearance:none;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:0;min-width:0;color:var(--fg)}
+.mcard .ml{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard .mv{font-size:12px;color:var(--muted)}
+.mcard .mv b{font-family:var(--f-display);font-size:23px;font-weight:600;color:var(--fg);letter-spacing:.01em}
+.mcard .md{font-size:11.5px;font-weight:600;min-height:16px}
+.body-fig{grid-column:2;grid-row:1 / span 6;display:flex;align-items:center;justify-content:center}
+.body-fig svg{width:100%;max-width:120px;height:auto}
+.ratio-track{position:relative;height:8px;border-radius:99px;background:linear-gradient(90deg,var(--good) 0 40%,var(--accent) 40% 70%,var(--warn) 70% 100%)}
+.ratio-dot{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:var(--surface);border:3px solid var(--fg);transform:translate(-50%,-50%)}
 
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:25;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .tabs-in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
@@ -222,7 +232,9 @@ try { const v = localStorage.getItem("qg.view"); if (v) S.view = v; } catch(e){}
 
 const DEF_CATS = ["Fit","Bouffe","Transport","Logement","Abonnements","Santé","Ezekiel","Shopping","Sorties","Divers"];
 const cats = () => (S.app.config && S.app.config.categories) || DEF_CATS;
-const MES = [["cou","Cou"],["epaules","Épaules"],["poitrine","Poitrine"],["brasR","Bras relâché"],["brasC","Bras contracté"],["taille","Taille (nombril)"],["hanches","Hanches"],["cuisse","Cuisse"],["mollet","Mollet"]];
+const MES_L = [["cou","Cou","up"],["bicepsG","Biceps G","up"],["poitrine","Poitrine","up"],["abdomen","Abdomen","down"],["cuisseG","Cuisse G","up"],["molletG","Mollet G","up"]];
+const MES_R = [["epaule","Épaules","up"],["bicepsD","Biceps D","up"],["taille","Taille","down"],["hanche","Hanches","down"],["cuisseD","Cuisse D","up"],["molletD","Mollet D","up"]];
+const MES = [...MES_L, ...MES_R];
 const LIEUX = ["Renens","Uni-Mail","Maison","Pas d'école"];
 const EZ = {depot:"Dépôt 8h30",recup:"Récup 16h30",rien:"Rien"};
 
@@ -486,12 +498,18 @@ VIEWS.corps = { title:"Corps", body(){
     return h;
   }
   if (S.ui.corpsTab==="mesures"){
-    const ds = Object.keys(S.mesures).sort(); const last = ds.length?S.mesures[ds[ds.length-1]]:null, prev = ds.length>1?S.mesures[ds[ds.length-2]]:null;
-    h += '<section class="card"><div class="card-h"><span class="eyebrow">Protocole</span><button class="btn sm pri" data-act="sheet" data-s="mesures">+ Nouvelle prise</button></div><div class="small">Même jour de la semaine, le matin à jeun, côté droit, mètre posé sans serrer. Une prise toutes les 1 à 2 semaines.</div></section>';
-    if (!last) return h+'<div class="empty">Aucune mensuration pour l\'instant.</div>';
-    h += '<section class="card"><span class="eyebrow">Dernière prise · '+fShort(ds[ds.length-1])+'</span><div class="list">'+MES.map(([k,l])=>{ const v=last[k], p=prev&&prev[k]; const d = (typeof v==="number"&&typeof p==="number")?v-p:null;
-      return '<div class="li"><span class="t grow">'+l+'</span>'+(d!=null&&d!==0?'<span class="small '+(d>0?"up":"down")+'">'+(d>0?"+":"")+r1(d)+'</span>':'')+'<span class="amt num">'+(typeof v==="number"?r1(v)+" cm":"–")+'</span></div>'; }).join("")+'</div></section>';
-    if (ds.length>1) h += '<section class="card"><span class="eyebrow">Historique</span><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Mesure</th>'+ds.slice(-6).reverse().map(d=>'<th>'+fShort(d)+'</th>').join("")+'</tr></thead><tbody>'+MES.map(([k,l])=>'<tr><td>'+l+'</td>'+ds.slice(-6).reverse().map(d=>'<td>'+(typeof S.mesures[d][k]==="number"?r1(S.mesures[d][k]):"–")+'</td>').join("")+'</tr>').join("")+'</tbody></table></div></section>';
+    const ds = Object.keys(S.mesures).sort();
+    h += '<div class="row"><button class="btn pri grow" data-act="sheet" data-s="mesures">+ Nouvelle prise</button></div>';
+    if (!ds.length) return h+'<div class="empty">Aucune mensuration pour l\'instant.</div>';
+    h += '<section class="card"><div class="card-h"><span class="eyebrow">Dernière prise · '+fShort(ds[ds.length-1])+'</span><span class="small muted">'+ds.length+' prise'+(ds.length>1?'s':'')+'</span></div><div class="body-grid">';
+    MES_L.forEach(([k,l,b],i)=>{ h += mesCard(k,l,b,1,i+1); });
+    h += '<div class="body-fig" aria-hidden="true">'+BODY_SVG+'</div>';
+    MES_R.forEach(([k,l,b],i)=>{ h += mesCard(k,l,b,3,i+1); });
+    h += '</div><div class="hint">Touche une mesure pour voir toutes tes prises. Flèche verte : ça va dans le bon sens (plus de muscle, moins de tour de taille).</div></section>';
+    const tl = mesLast("taille"), hl = mesLast("hanche");
+    if (tl && hl){ const r = tl.v/hl.v; const pos = Math.max(0,Math.min(100,(r-0.86)/(1.06-0.86)*100)); const lab = r<0.96?"Bas":r<=1?"Standard":"Élevé";
+      h += '<section class="card"><div class="spread"><span class="eyebrow">Rapport taille / hanches</span><span class="chip '+(r<0.96?"good":r<=1?"acc":"warn")+'">'+lab+'</span></div><div class="big num" style="text-align:center">'+r.toFixed(2)+'</div><div class="ratio-track"><span class="ratio-dot" style="left:'+pos+'%"></span></div><div class="spread small muted"><span>Bas</span><span>0.96</span><span>1.00</span><span>Élevé</span></div></section>'; }
+    h += '<section class="card"><span class="eyebrow">Protocole</span><div class="small">Même jour de la semaine, le matin à jeun, mètre posé sans serrer. Une prise toutes les 1 à 2 semaines.</div></section>';
     return h;
   }
   const ds = Object.keys(S.tension).sort().reverse();
@@ -545,6 +563,19 @@ VIEWS.diet = { title:"Diet", body(){
 }};
 function macroBar(label, v, max, unit){ const pct = max ? Math.min(100, v/max*100) : 0;
   return '<div class="stack" style="gap:4px"><div class="spread small"><span>'+label+'</span><span class="num"><b>'+Math.round(v)+'</b> / '+Math.round(max)+' '+unit+'</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'; }
+const BODY_SVG = '<svg viewBox="0 0 100 240" role="img"><g fill="var(--accent)" opacity=".38">'+
+  '<ellipse cx="50" cy="17" rx="10.5" ry="12.5"/><rect x="45" y="27" width="10" height="9" rx="3"/>'+
+  '<path d="M29 38 Q50 33 71 38 Q79 41 80 48 Q81 64 70 86 Q66 96 66 108 L34 108 Q34 96 30 86 Q19 64 20 48 Q21 41 29 38 Z"/>'+
+  '<path d="M21 45 Q13 50 13 68 L11 100 Q10 113 14 122 L19 122 Q20 111 21 100 L25 72 Z"/><path d="M79 45 Q87 50 87 68 L89 100 Q90 113 86 122 L81 122 Q80 111 79 100 L75 72 Z"/>'+
+  '<path d="M34 106 L66 106 Q68 116 64 124 L52 126 L50 124 L48 126 L36 124 Q32 116 34 106 Z"/>'+
+  '<path d="M36 122 L49 125 Q49 150 48 172 Q47 198 46 222 L38 222 Q37 196 36 172 Q34 148 36 122 Z"/><path d="M64 122 L51 125 Q51 150 52 172 Q53 198 54 222 L62 222 Q63 196 64 172 Q66 148 64 122 Z"/>'+
+  '<ellipse cx="41" cy="226" rx="6" ry="3.5"/><ellipse cx="59" cy="226" rx="6" ry="3.5"/></g></svg>';
+function mesSeries(k){ return Object.keys(S.mesures).sort().map(d=>({d, v:S.mesures[d][k]})).filter(x=>typeof x.v==="number"); }
+function mesLast(k){ const L = mesSeries(k); return L[L.length-1]; }
+function mesCard(k,l,bon,col,row){ const L = mesSeries(k), last = L[L.length-1], prev = L[L.length-2]; const d = last&&prev ? r1(last.v-prev.v) : 0;
+  const good = (d>0&&bon==="up")||(d<0&&bon==="down");
+  return '<button class="mcard" style="grid-column:'+col+';grid-row:'+row+'" data-act="sheet" data-s="mesure" data-k="'+k+'"><span class="ml">'+l+'</span><span class="mv"><b class="num">'+(last?kg(last.v):"–")+'</b> cm</span>'+
+    '<span class="md num" style="color:'+(d?(good?"var(--good)":"var(--warn)"):"var(--muted)")+'">'+(d?(d>0?"▲ +":"▼ ")+kg(d):(prev?"= stable":""))+'</span></button>'; }
 function journalView(){
   const d = S.ui.jourDiet, saved = !!S.journal[d], j = journalOf(d), st = journalStats(j);
   let h = '<div class="spread"><button class="icon-btn" data-act="jDay" data-n="-1" aria-label="Jour précédent">‹</button><h2 class="h2 cap">'+(d===today()?"Aujourd\'hui":fDay(d))+'</h2><button class="icon-btn" data-act="jDay" data-n="1" aria-label="Jour suivant">›</button></div>';
@@ -703,10 +734,24 @@ SHEETS.note = { html(ds){ const n = ds.id ? S.notes.find(x=>x.id===ds.id)||{} : 
     await put("notes/"+id, {id, texte:t, type:val("s-ntype"), date:(n&&n.date)||ds.d||today(), cree:(n&&n.cree)||new Date().toISOString()}); toast("Note enregistrée"); },
   async del(ds){ await rm("notes/"+ds.id); toast("Note supprimée"); } };
 
-SHEETS.mesures = { html(){ const ds = Object.keys(S.mesures).sort(); const last = ds.length?S.mesures[ds[ds.length-1]]:{};
-  return '<h2 class="h2">Mensurations du '+fShort(today())+'</h2><div class="hint">En cm. La dernière valeur est affichée en gris.</div><div class="grid2">'+MES.map(([k,l])=>fld("m-"+k,l,"",'inputmode="decimal" placeholder="'+(typeof last[k]==="number"?r1(last[k]):"")+'"')).join("")+'</div>'+sheetBtns(false); },
-  async save(){ const o = {date:today()}; let n=0; MES.forEach(([k])=>{ const v = num(val("m-"+k)); if (v!=null){ o[k]=v; n++; } }); if (!n) return toast("Entre au moins une mesure.",true);
-    await put("mesures/"+today(), o); toast("Mensurations enregistrées"); } };
+SHEETS.mesures = { html(){ const ph = k => { const x = mesLast(k); return x ? kg(x.v).replace(",",".") : ""; };
+  const col = L => L.map(([k,l])=>fld("m-"+k,l,"",'inputmode="decimal" placeholder="'+ph(k)+'"')).join("");
+  return '<h2 class="h2">Nouvelle prise</h2>'+fld("m-date","Date",today(),'type="date"')+'<div class="hint">En cm. Ta dernière valeur est affichée en gris. Laisse vide ce que tu n\'as pas mesuré.</div><div class="grid2"><div class="stack">'+col(MES_L)+'</div><div class="stack">'+col(MES_R)+'</div></div>'+sheetBtns(false); },
+  async save(){ const d = val("m-date") || today(); const o = {...(S.mesures[d]||{}), date:d}; delete o.id; let n=0;
+    MES.forEach(([k])=>{ const v = num(val("m-"+k)); if (v!=null){ o[k]=v; n++; } }); if (!n) return toast("Entre au moins une mesure.",true);
+    await put("mesures/"+d, o); toast("Prise enregistrée"); } };
+SHEETS.mesure = { html(ds){ const def = MES.find(x=>x[0]===ds.k)||[ds.k,ds.k,"up"]; const L = mesSeries(ds.k);
+  let h = '<h2 class="h2">'+esc(def[1])+'</h2>';
+  if (!L.length) return h+'<div class="empty">Pas encore de prise pour cette mesure.</div><div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>';
+  const first = L[0], last = L[L.length-1], tot = r1(last.v-first.v);
+  h += '<div class="grid3"><div class="stat"><span class="k">Actuel</span><span class="v num">'+kg(last.v)+'</span></div><div class="stat"><span class="k">Départ</span><span class="v num">'+kg(first.v)+'</span></div><div class="stat"><span class="k">Évolution</span><span class="v num" style="color:'+(tot?(((tot>0)===(def[2]==="up"))?"var(--good)":"var(--warn)"):"var(--fg)")+'">'+(tot>0?"+":"")+kg(tot)+'</span></div></div>';
+  if (L.length>1){ const W=320,H=120,P=24; const lo=Math.min(...L.map(x=>x.v))-0.5, hi=Math.max(...L.map(x=>x.v))+0.5; const X=i=>P+i*(W-2*P)/(L.length-1), Y=v=>10+(hi-v)/(hi-lo)*(H-34);
+    h += '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Évolution de la mesure"><path d="'+L.map((x,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(x.v).toFixed(1)).join(" ")+'" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linejoin="round"/>'+
+      L.map((x,i)=>'<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(x.v).toFixed(1)+'" r="'+(i===L.length-1?4.5:3)+'" fill="var(--accent)"/>').join("")+'<text x="'+P+'" y="'+(H-6)+'">'+fShort(first.d)+'</text><text x="'+(W-P)+'" y="'+(H-6)+'" text-anchor="end">'+fShort(last.d)+'</text></svg>'; }
+  h += '<div class="list">'+L.slice().reverse().map((x,i,arr)=>{ const p = arr[i+1]; const d = p ? r1(x.v-p.v) : null;
+    return '<div class="li"><span class="chip">Prise '+(L.length-i)+'</span><span class="t grow">'+fShort(x.d)+'</span>'+(d?'<span class="small" style="color:'+(((d>0)===(def[2]==="up"))?"var(--good)":"var(--warn)")+'">'+(d>0?"▲ +":"▼ ")+kg(d)+'</span>':'')+'<span class="amt num">'+kg(x.v)+' cm</span></div>'; }).join("")+'</div>';
+  return h+'<div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>'; },
+  async save(){ } };
 
 SHEETS.fixe = { html(ds){ const f = ds.id ? S.fixes.find(x=>x.id===ds.id)||{} : {};
   return '<h2 class="h2">'+(ds.id?esc(f.nom):"Nouvelle facture fixe")+'</h2>'+fld("s-nom","Nom",f.nom,'placeholder="Abonnement Swisscom"')+'<div class="grid2">'+fld("s-montant","Montant habituel (facultatif)",f.montant,'inputmode="decimal"')+fld("s-jour","Jour d\'échéance",f.jour,'inputmode="numeric" placeholder="25"')+'</div>'+catSel("s-cat",f.categorie||"Abonnements")+'<div class="hint">Le montant de chaque mois se saisit dans la liste Mensuel. Le montant habituel sert de proposition.</div>'+sheetBtns(!!ds.id); },
