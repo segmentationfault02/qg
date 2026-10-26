@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Lc532bxRw2t5V2mqXWLPcLPVL6HeBq5hoIcQn2zhp0M='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-CqCwnDlJckNX1dD9Y5MoHOgY0M3fDaHECAW1R+Z5ty0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -781,8 +781,10 @@ SHEETS.objectif = { html(ds){ return '<h2 class="h2">Objectif · '+DOWL[dow(addD
 
 function mealDraftItemsHtml(dr){
   const F = allFoods();
+  const sorted = Object.entries(F).sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr"));
   const rows = (dr.items||[]).map((it,k)=>{ const a = F[it.a]||{nom:it.a,unite:"g"}; const m = itemMacros(it);
-    return '<div class="row" style="gap:8px"><span class="grow small" style="min-width:0;overflow-wrap:anywhere">'+esc(a.nom)+'</span><input class="inp num" style="width:84px;min-height:38px;padding:6px 8px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité '+esc(a.nom)+'"><span class="small muted" style="width:26px">'+(a.unite||"g")+'</span><span class="small num muted" style="width:58px;text-align:right" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:32px;height:32px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer">×</button></div>'; }).join("");
+    return '<div class="stack" style="gap:6px;padding:8px 0;border-top:1px solid var(--line)"><select class="inp" id="ri-a-'+k+'" data-k="'+k+'" aria-label="Aliment">'+sorted.map(([id,x])=>'<option value="'+esc(id)+'"'+(id===it.a?" selected":"")+'>'+esc(x.nom)+'</option>').join("")+(F[it.a]?'':'<option selected>'+esc(it.a)+'</option>')+'</select>'+
+      '<div class="row" style="gap:8px"><input class="inp num" style="width:96px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité"><span class="small muted">'+(a.unite||"g")+'</span><span class="grow small num muted" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:34px;height:34px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer cet aliment">×</button></div></div>'; }).join("");
   const opts = Object.entries(F).sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr")).map(([id,a])=>'<option value="'+esc(id)+'"'+(S.sheet.addSel===id?" selected":"")+'>'+esc(a.nom)+'</option>').join("");
   let add = '<div class="card" style="gap:8px;background:var(--surface2)"><span class="eyebrow">Ajouter un aliment</span><div class="row" style="gap:8px"><select class="inp grow" id="ri-add" style="min-width:0">'+opts+'<option value="__new"'+(S.sheet.addSel==="__new"?" selected":"")+'>Nouvel aliment…</option></select><input class="inp num" style="width:84px" id="ri-addq" inputmode="decimal" placeholder="g"></div>';
   if (S.sheet.addSel==="__new") add += '<div class="hint">Macros pour 100 g (ou 100 ml), lues sur l\'étiquette.</div><div class="grid2">'+fld("nf-nom","Nom","",'placeholder="Skyr nature"')+'<div class="field"><label for="nf-unite">Unité</label><select class="inp" id="nf-unite"><option value="g">g</option><option value="ml">ml</option></select></div></div><div class="grid4">'+fld("nf-kcal","Kcal","",'inputmode="decimal"')+fld("nf-p","Prot.","",'inputmode="decimal"')+fld("nf-g","Gluc.","",'inputmode="decimal"')+fld("nf-l","Lip.","",'inputmode="decimal"')+'</div>';
@@ -808,7 +810,9 @@ function syncDraft(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
   dr.items.forEach((it,k)=>{ const e = document.getElementById("ri-q-"+k); if (e){ const v = num(e.value); it.q = v==null?0:v; } }); }
 document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="repas") return;
   if (t.id && t.id.startsWith("ri-q-")){ syncDraft(); const k = t.dataset.k; const m = itemMacros(S.sheet.draft.items[k]); const el = document.getElementById("ri-k-"+k); if (el) el.textContent = Math.round(m.kcal)+" kcal"; mealDraftTotal(); } });
-document.addEventListener("change", e => { if (e.target.id==="ri-add" && S.sheet){ syncDraft(); S.sheet.addSel = e.target.value; renderSheet(); } });
+document.addEventListener("change", e => { const t = e.target; if (!S.sheet) return;
+  if (t.id==="ri-add"){ syncDraft(); S.sheet.addSel = t.value; renderSheet(); }
+  else if (t.id && t.id.startsWith("ri-a-") && S.sheet.draft){ syncDraft(); S.sheet.draft.items[+t.dataset.k].a = t.value; renderSheet(); } });
 SHEETS.montantMois = { html(ds){ const M = S.ui.mois, f = S.fixes.find(x=>x.id===ds.id)||{}; const m = S.mois[M]||{}; const cur = (m.montants||{})[ds.id];
     const prevM = addMonths(M,-1), prev = ((S.mois[prevM]||{}).montants||{})[ds.id]; const sugg = typeof prev==="number" ? prev : f.montant;
     return '<h2 class="h2">'+esc(f.nom)+' · <span class="cap">'+fMonth(M)+'</span></h2>'+fld("s-mm","Montant ce mois (CHF)",typeof cur==="number"?cur:"",'inputmode="decimal" placeholder="'+(typeof sugg==="number"?sugg:"")+'"')+
