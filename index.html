@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AeJ+NfRQWh/Vt7qTvJqPsKOOQ7GKfkQ3O+y4CSEtLTQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-TKvYCXMWYY70m3lFGSyp0LhiXd2tDgprMah/hdGTXio='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1544,6 +1544,15 @@ async function launch(session){
   Store.live();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
+/* ---------- mise à jour automatique de l'app ---------- */
+const APP_VERSION = "20261026190803";
+async function checkUpdate(){
+  try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
+    const m = /const APP_VERSION = "(\d+)"/.exec(t);
+    if (m && m[1] !== APP_VERSION && m[1] !== "__V__"){ if (!S.sheet){ location.reload(); } } } catch(e){}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
+setTimeout(checkUpdate, 1500);
 async function boot(){
   if (!sb){ $app.innerHTML = '<div class="banner">Impossible de joindre le serveur. Vérifie ta connexion puis recharge.</div>'; return; }
   const {data} = await sb.auth.getSession();
