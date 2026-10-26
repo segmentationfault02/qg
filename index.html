@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-CqCwnDlJckNX1dD9Y5MoHOgY0M3fDaHECAW1R+Z5ty0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-JUdIfUpAyzo4EBbNrCRC15I9RlPym20ocqRk6gNsLHM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -412,6 +412,7 @@ VIEWS.accueil = { title:"QG", body(){
     h += '<div class="spread"><div class="big">'+esc(sp.nom)+'</div><a class="btn pri" href="'+esc(tr.hevyLien||"hevy://")+'" target="_blank" rel="noopener">Ouvrir Hevy</a></div>';
     if (sp.detail) h += '<div class="small muted">'+esc(sp.detail)+'</div>';
     if (tr.rappel) h += '<div class="small">'+esc(tr.rappel)+'</div>';
+    h += hevyBlock(t, sp.nom);
   }
   h += '<div class="row wrap-r small muted" style="gap:6px">'+[1,2,3,4,5,6,0].map(i=>{ const j=(tr.jours||{})[String(i)]; const on=(i===dow(t)); return '<span class="chip'+(on?' acc':'')+'">'+DOWS[i]+' · '+esc(j?j.nom:"?")+'</span>'; }).join("")+'</div></section>';
 
@@ -421,8 +422,6 @@ VIEWS.accueil = { title:"QG", body(){
   if (P) h += '<div class="grid3"><div class="stat"><span class="k">Moy. 7 j</span><span class="v num">'+kg(P.avg)+'</span></div><div class="stat"><span class="k">Dernière</span><span class="v num">'+kg(P.last.kg)+'</span></div><div class="stat"><span class="k">Le</span><span class="v">'+fShort(P.last.d)+'</span></div></div>';
   h += '</section>';
 
-  // Ezekiel
-  h += '<section class="card"><span class="eyebrow">Ezekiel</span><div class="stack"><div class="small muted">Aujourd\'hui</div>'+ezChips(t)+'<div class="small muted">Demain, '+fmt(tm,{weekday:"long"})+'</div>'+ezChips(tm)+'</div></section>';
 
   // Agenda du jour
   h += '<section class="card"><div class="card-h"><span class="eyebrow">Aujourd\'hui</span><button class="btn sm" data-act="sheet" data-s="item" data-d="'+t+'">+ Ajouter</button></div>';
@@ -453,10 +452,64 @@ VIEWS.accueil = { title:"QG", body(){
   return h;
 }};
 
+/* ---------- serveur (Hevy, transports) ---------- */
+async function api(body){
+  if (!sb) throw new Error("hors_ligne");
+  const {data, error} = await sb.functions.invoke("qg", {body});
+  if (error){ let m = error.message; try { const j = await error.context.json(); m = j.erreur || m; } catch(e){} throw new Error(m); }
+  if (data && data.erreur) throw new Error(data.erreur);
+  return data;
+}
+const ERRS = {double_authentification_requise:"Reconnecte-toi avec ton code de sécurité.", non_connecte:"Reconnecte-toi.", acces_refuse:"Accès refusé.", dossier_introuvable:"Dossier Hevy introuvable.", seance_introuvable:"Séance introuvable dans ton dossier Hevy.", hors_ligne:"Pas de connexion."};
+const errMsg = e => ERRS[e.message] || (/^ojp_/.test(e.message) ? "Le service des horaires ne répond pas, réessaie." : /^hevy_/.test(e.message) ? "Hevy ne répond pas, réessaie." : "Erreur : "+e.message);
+const hhmm = iso => iso ? new Date(iso).toLocaleTimeString("fr-CH",{hour:"2-digit",minute:"2-digit"}) : "";
+const delayMin = p => p && p.estime && p.prevu ? Math.round((new Date(p.estime)-new Date(p.prevu))/60000) : 0;
+
+function hevyDossier(dateS){ const tr = S.app.training||{}; const b = tr.hevyBascule; return (b && b.date && dateS>=b.date) ? b.dossier : (tr.hevyDossier||"Degraissage H"); }
+S.hevy = {}; S.live = {};
+function loadHevy(dateS, nom, force){
+  const key = dateS+"|"+nom; const h = S.hevy[key];
+  if (h && !force && (h.loading || h.data || h.err)) return;
+  S.hevy[key] = {loading:true};
+  api({action:"hevy_seance", dossier:hevyDossier(dateS), seance:nom}).then(d=>{ S.hevy[key] = {data:d}; render(); }).catch(e=>{ S.hevy[key] = {err:errMsg(e)}; render(); });
+}
+function hevyBlock(dateS, nom){
+  const key = dateS+"|"+nom; const h = S.hevy[key];
+  if (!h){ setTimeout(()=>loadHevy(dateS, nom), 0); return '<div class="small muted">Chargement de ta séance Hevy…</div>'; }
+  if (h.loading) return '<div class="small muted">Chargement de ta séance Hevy…</div>';
+  if (h.err) return '<div class="row"><span class="small up grow">'+esc(h.err)+'</span><button class="btn sm" data-act="hevyReload" data-k="'+esc(key)+'">Réessayer</button></div>';
+  const d = h.data; const faite = d.derniereFois && ymd(new Date(d.derniereFois))===dateS;
+  const open = S.ui.hevyOpen; const ex = d.exercices||[]; const shown = open ? ex : ex.slice(0,4);
+  let o = '<div class="spread"><span class="small"><b>'+esc(d.titre)+'</b> · '+ex.length+' exercices · '+sum(ex,e=>e.series.filter(x=>x.type!=="warmup").length)+' séries</span>'+(faite?'<span class="chip good">Faite</span>':'')+'</div><div class="list">';
+  o += shown.map(e=>{ const work = e.series.filter(x=>x.type!=="warmup"); const pl = work[0] && work[0].plage; const reps = pl && pl.start ? pl.start+(pl.end&&pl.end!==pl.start?"-"+pl.end:"") : (work[0] && work[0].reps) || "";
+    const last = (e.dernier||[]).slice(0,2).map(x=>(x.kg!=null?kg(x.kg).replace(",0","")+" kg":"")+(x.reps?" × "+x.reps:"")).join(", ");
+    return '<div class="li" style="align-items:flex-start"><div class="grow" style="min-width:0"><div class="t">'+esc(e.titre)+'</div><div class="small muted">'+work.length+' × '+esc(reps)+(e.repos?' · repos '+(e.repos>=60?Math.round(e.repos/60*10)/10+' min':e.repos+' s'):'')+'</div>'+(last?'<div class="small">Dernière fois : '+esc(last)+'</div>':'')+'</div></div>'; }).join("");
+  o += '</div>';
+  if (ex.length>4) o += '<button class="btn sm ghost" data-act="hevyToggle">'+(open?"Réduire":"Voir les "+ex.length+" exercices")+'</button>';
+  return o;
+}
+
+/* ---------- trajets ---------- */
+function legLine(l){
+  if (l.type==="marche") return l.minutes ? 'Marche '+l.minutes+' min' : '';
+  const dd = delayMin(l.dep), da = delayMin(l.arr);
+  const voie = l.dep.voie ? ' voie '+l.dep.voie+(l.dep.voiePrevue&&l.dep.voie!==l.dep.voiePrevue?' (changée)':'') : '';
+  return hhmm(l.dep.prevu)+(dd>0?' (+'+dd+')':'')+' '+l.dep.nom+voie+' → '+hhmm(l.arr.prevu)+(da>0?' (+'+da+')':'')+' '+l.arr.nom+' · '+(l.ligne||l.cat||l.mode)+(l.annule?' · SUPPRIMÉ':'');
+}
+const tripText = t => t.legs.map(legLine).filter(Boolean).join("\n");
+const tripHasRE = t => t.legs.some(l=>l.type==="pt" && /^RE/i.test(l.cat||l.ligne||""));
+function tripCard(t, i, act){
+  const first = t.legs.find(l=>l.type==="pt"), last = [...t.legs].reverse().find(l=>l.type==="pt");
+  const dd = first ? delayMin(first.dep) : 0;
+  return '<button type="button" class="card" style="text-align:left;gap:6px;padding:10px 12px;color:var(--fg);cursor:pointer" data-act="'+act+'" data-i="'+i+'"><div class="spread"><b class="num">'+hhmm(t.depart)+' → '+hhmm(t.arrivee)+'</b><span class="small muted">'+t.minutes+' min · '+(t.changements?t.changements+' chgt':'direct')+'</span></div>'+
+    '<div class="row wrap-r" style="gap:6px">'+t.legs.filter(l=>l.type==="pt").map(l=>'<span class="chip '+(/^RE/i.test(l.cat||l.ligne)?'warn':'acc')+'">'+esc(l.ligne||l.cat)+'</span>').join("")+(dd>0?'<span class="chip bad">+'+dd+' min</span>':'')+(t.legs.some(l=>l.annule)?'<span class="chip bad">Supprimé</span>':'')+'</div>'+
+    '<div class="small muted" style="white-space:pre-wrap">'+esc(tripText(t))+'</div></button>';
+}
 function agendaLi(d,it){
   return '<div class="li'+(it.fait?' done':'')+'" style="align-items:flex-start">'+chk(it.fait,"itemDone",'data-d="'+d+'" data-id="'+it.id+'"')+
     '<div class="grow tap" data-act="sheet" data-s="item" data-d="'+d+'" data-id="'+it.id+'" style="cursor:pointer;min-width:0"><div class="row"><b class="num">'+esc(it.heure||"")+'</b><span class="t">'+esc(it.titre)+'</span></div>'+
-    (it.trajet?'<div class="trajet">'+esc(it.trajet)+'</div>':'')+'</div></div>';
+    (it.trajet?'<div class="trajet">'+esc(it.trajet)+'</div>':'')+'</div></div>'+
+    (it.trajetReq && d>=today() ? '<div style="padding:0 0 10px 34px" class="stack"><button class="btn sm" data-act="liveTrip" data-d="'+d+'" data-id="'+it.id+'">Horaires en direct</button>'+(S.live[it.id]?'<div class="trajet" style="border-left-color:var(--good)">'+S.live[it.id]+'</div>':'')+'</div>' : '');
 }
 
 /* ---------- AGENDA ---------- */
@@ -464,11 +517,11 @@ VIEWS.agenda = { title:"Agenda", body(){
   const t = today(), sel = S.ui.agendaDay;
   const start = addDays(t,-2);
   let h = '<div class="days">';
-  for (let i=0;i<10;i++){ const d = addDays(start,i); const a = S.agenda[d]; const has = a && ((a.items&&a.items.length)||a.ezekiel);
+  for (let i=0;i<10;i++){ const d = addDays(start,i); const a = S.agenda[d]; const has = a && a.items && a.items.length;
     h += '<button class="day" data-act="agDay" data-d="'+d+'" aria-pressed="'+(d===sel)+'"><span>'+DOWS[dow(d)]+'</span><b class="num">'+parseYmd(d).getDate()+'</b>'+(has?'<i class="dot"></i>':'<i class="dot" style="opacity:0"></i>')+'</button>'; }
   h += '</div>';
   const ag = S.agenda[sel]||{}; const items=(ag.items||[]).slice().sort((a,b)=>(a.heure||"99")<(b.heure||"99")?-1:1);
-  h += '<section class="card"><div class="card-h"><h2 class="h2 cap">'+fDay(sel)+'</h2></div><span class="eyebrow">Ezekiel</span>'+ezChips(sel)+'</section>';
+  h += '<section class="card"><div class="card-h"><h2 class="h2 cap">'+fDay(sel)+'</h2></div></section>';
   h += '<section class="card"><div class="card-h"><span class="eyebrow">Programme</span><button class="btn sm pri" data-act="sheet" data-s="item" data-d="'+sel+'">+ Tâche</button></div>';
   h += items.length ? '<div class="list">'+items.map(it=>agendaLi(sel,it)).join("")+'</div>' : '<div class="empty">Journée vide. Ajoute une tâche, ou demande à Claude de monter ton planning.</div>';
   h += '</section>';
@@ -713,6 +766,7 @@ function renderSheet(){
   const s = SHEETS[S.sheet.type]; if (!s) return;
   document.getElementById("sheet").innerHTML = '<div class="sheet-bg" data-act="sheetBg"><form class="sheet" data-form="sheet" role="dialog" aria-modal="true"><div class="grab"></div>'+s.html(S.sheet.ds)+'</form></div>';
   if (S.sheet.type==="repas") mealDraftTotal();
+  if (S.sheet.type==="item" && S.sheet.keep){ const k = S.sheet.keep; ["heure","titre","trajet"].forEach(x=>{ const e = document.getElementById("s-"+x); if (e && k[x]!=null) e.value = k[x]; }); }
   const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas") setTimeout(()=>f.focus(),60);
 }
 const fld = (id,label,v,attrs) => '<div class="field"><label for="'+id+'">'+label+'</label><input class="inp" id="'+id+'" value="'+esc(v==null?"":v)+'" '+(attrs||"")+'></div>';
@@ -720,10 +774,19 @@ const catSel = (id,cur) => '<div class="field"><label for="'+id+'">Catégorie</l
 const sheetBtns = (del) => '<div class="row"><button type="button" class="btn ghost" data-act="close">Annuler</button>'+(del?'<button type="button" class="btn danger" data-act="sheetDel">Supprimer</button>':'')+'<button type="submit" class="btn pri grow">Enregistrer</button></div>';
 
 SHEETS.item = { html(ds){ const it = ds.id ? ((S.agenda[ds.d]||{}).items||[]).find(x=>x.id===ds.id)||{} : {};
-  return '<h2 class="h2">'+(ds.id?"Modifier":"Nouvelle tâche")+' · '+fShort(ds.d)+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-heure","Heure",it.heure,'type="time"')+fld("s-titre","Tâche",it.titre,'placeholder="Séance Pull à American"')+'</div><div class="field"><label for="s-trajet">Trajet (facultatif)</label><textarea class="inp" id="s-trajet" placeholder="Poterie 8h12 → Butini 8h21 (tram 14)">'+esc(it.trajet||"")+'</textarea></div>'+sheetBtns(!!ds.id); },
+  if (!S.sheet.tr){ const r = it.trajetReq||{}; S.sheet.tr = {from:r.from||null, to:r.to||null, arrive: r.arrive!==false, heure: r.heure||it.heure||"", res:null, req:it.trajetReq||null}; }
+  const T = S.sheet.tr, fav = ((S.app.config||{}).arrets)||[];
+  const favs = f => fav.length ? '<div class="row wrap-r" style="gap:6px">'+fav.slice(0,8).map((a,i)=>'<button type="button" class="chip" style="border:0;cursor:pointer" data-act="trFav" data-f="'+f+'" data-i="'+i+'">'+esc(a.nom.replace(/^Genève, /,""))+'</button>').join("")+'</div>' : '';
+  const stopField = (f,label) => '<div class="field"><label for="tr-'+f+'">'+label+'</label><input class="inp" id="tr-'+f+'" autocomplete="off" placeholder="Arrêt ou gare" value="'+esc(T[f]?T[f].nom:"")+'"><div id="tr-'+f+'-sug" class="stack" style="gap:4px"></div>'+favs(f)+'</div>';
+  return '<h2 class="h2">'+(ds.id?"Modifier":"Nouvelle tâche")+' · '+fShort(ds.d)+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-heure","Heure",it.heure,'type="time"')+fld("s-titre","Tâche",it.titre,'placeholder="Séance Pull à American"')+'</div>'+
+    '<div class="card" style="background:var(--surface2);gap:10px"><span class="eyebrow">Trajet en transports</span>'+stopField("from","Départ")+stopField("to","Arrivée")+
+    '<div class="row" style="gap:8px"><div class="seg" style="flex:1"><button type="button" data-act="trMode" data-k="dep" aria-pressed="'+(!T.arrive)+'">Partir à</button><button type="button" data-act="trMode" data-k="arr" aria-pressed="'+T.arrive+'">Arriver à</button></div><input class="inp num" type="time" id="tr-heure" style="width:118px" value="'+esc(T.heure)+'" aria-label="Heure du trajet"></div>'+
+    '<button type="button" class="btn pri" data-act="trSearch">Chercher les trajets</button><div id="tr-res" class="stack">'+(T.res||'')+'</div></div>'+
+    '<div class="field"><label for="s-trajet">Trajet retenu</label><textarea class="inp" id="s-trajet" placeholder="Choisis un trajet ci-dessus, ou écris-le">'+esc(it.trajet||"")+'</textarea></div>'+sheetBtns(!!ds.id); },
   async save(ds){ const titre = val("s-titre").trim(); if (!titre) return toast("Donne un nom à la tâche.",true);
     const a = S.agenda[ds.d]||{}; let items = (a.items||[]).map(x=>({...x}));
     const it = {id:ds.id||uid(), heure:val("s-heure"), titre, trajet:val("s-trajet").trim(), fait:false};
+    if (S.sheet.tr && S.sheet.tr.req && it.trajet) it.trajetReq = S.sheet.tr.req; else if (!it.trajet) it.trajetReq = null;
     if (ds.id) items = items.map(x=>x.id===ds.id?{...x,...it,fait:x.fait}:x); else items.push(it);
     await put("agenda/"+ds.d, {...a, date:ds.d, items}); toast("Tâche enregistrée"); },
   async del(ds){ const a = S.agenda[ds.d]||{}; await put("agenda/"+ds.d, {...a, date:ds.d, items:(a.items||[]).filter(x=>x.id!==ds.id)}); toast("Tâche supprimée"); } };
@@ -805,6 +868,15 @@ SHEETS.repas = { html(ds){
     else j.repas.push({...dr, id:uid(), ajoute:true});
     sortRepas(j.repas); await saveJournal(d, j); toast("Repas enregistré"); },
   async del(ds){ const d = S.ui.jourDiet, j = journalOf(d); j.repas.splice(+ds.i,1); await saveJournal(d, j); toast("Repas retiré pour ce jour"); } };
+function keepSheetFields(){ const s = S.sheet; if (!s || s.type!=="item") return; const ds = s.ds; s.keep = {heure:val("s-heure"), titre:val("s-titre"), trajet:val("s-trajet")}; }
+let sugTimer = null;
+document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="item" || !/^tr-(from|to)$/.test(t.id)) return;
+  const f = t.id.slice(3); S.sheet.tr[f] = null; clearTimeout(sugTimer); const q = t.value.trim(); const box = document.getElementById(t.id+"-sug");
+  if (q.length<2){ box.innerHTML = ""; return; }
+  sugTimer = setTimeout(async ()=>{ box.innerHTML = '<span class="small muted">Recherche…</span>';
+    try { const r = await api({action:"arrets", q}); (S.sheet.tr.sug = S.sheet.tr.sug||{})[f] = r.arrets||[];
+      box.innerHTML = (r.arrets||[]).slice(0,6).map((a,i)=>'<button type="button" class="btn sm ghost" style="justify-content:flex-start" data-act="trPick" data-f="'+f+'" data-i="'+i+'">'+esc(a.nom)+'</button>').join("") || '<span class="small muted">Aucun arrêt trouvé.</span>';
+    } catch(err){ box.innerHTML = '<span class="small up">'+esc(errMsg(err))+'</span>'; } }, 350); });
 function syncDraft(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
   const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value;
   dr.items.forEach((it,k)=>{ const e = document.getElementById("ri-q-"+k); if (e){ const v = num(e.value); it.q = v==null?0:v; } }); }
@@ -893,6 +965,40 @@ const ACT = {
   async objDone(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).map(o=>o.id===d.id?{...o,fait:!o.fait}:o); }); }catch(e){} },
   async objDel(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).filter(o=>o.id!==d.id); }); }catch(e){} },
   async export(){ await doExport(); },
+  hevyToggle(){ S.ui.hevyOpen = !S.ui.hevyOpen; render(); },
+  hevyReload(d){ const [dt, nom] = d.k.split("|"); loadHevy(dt, nom, true); render(); },
+  trMode(d){ const T = S.sheet.tr; T.heure = val("tr-heure"); T.arrive = d.k==="arr"; keepSheetFields(); renderSheet(); },
+  trFav(d){ const a = ((S.app.config||{}).arrets||[])[+d.i]; if (!a) return; S.sheet.tr[d.f] = a; const e = document.getElementById("tr-"+d.f); if (e) e.value = a.nom; document.getElementById("tr-"+d.f+"-sug").innerHTML = ""; },
+  trPick(d){ const a = (S.sheet.tr.sug||{})[d.f]; const x = a && a[+d.i]; if (!x) return; S.sheet.tr[d.f] = x; document.getElementById("tr-"+d.f).value = x.nom; document.getElementById("tr-"+d.f+"-sug").innerHTML = ""; },
+  async trSearch(){ const T = S.sheet.tr; T.heure = val("tr-heure") || val("s-heure");
+    if (!T.from || !T.to) return toast("Choisis un arrêt de départ et d'arrivée dans les suggestions.", true);
+    if (!T.heure) return toast("Indique une heure.", true);
+    const box = document.getElementById("tr-res"); box.innerHTML = '<div class="small muted">Recherche des horaires…</div>';
+    const ds = S.sheet.ds, [y,m,dd] = ds.d.split("-").map(Number), [hh,mi] = T.heure.split(":").map(Number);
+    try { const r = await api({action:"trajet", from:T.from, to:T.to, time:new Date(y,m-1,dd,hh,mi).toISOString(), arrive:T.arrive, n:6});
+      let L = (r.trajets||[]).filter(t=>t.legs.some(l=>l.type==="pt"));
+      L.sort((a,b)=>(tripHasRE(a)?1:0)-(tripHasRE(b)?1:0) || (a.depart<b.depart?-1:1));
+      if (T.arrive) L = L.filter(t=>new Date(t.arrivee)<=new Date(y,m-1,dd,hh,mi+1)).sort((a,b)=>(tripHasRE(a)?1:0)-(tripHasRE(b)?1:0)||(a.arrivee>b.arrivee?-1:1));
+      T.list = L;
+      T.res = L.length ? '<div class="small muted">Touche un trajet pour le garder. Les trajets avec RE sont mis en dernier.</div>'+L.map((t,i)=>tripCard(t,i,"trChoose")).join("") : '<div class="empty">Aucun trajet trouvé.</div>';
+      if (S.sheet && S.sheet.tr===T) box.innerHTML = T.res;
+    } catch(e){ box.innerHTML = '<div class="small up">'+esc(errMsg(e))+'</div>'; } },
+  async trChoose(d){ const T = S.sheet.tr, t = T.list && T.list[+d.i]; if (!t) return;
+    document.getElementById("s-trajet").value = tripText(t);
+    const first = t.legs.find(l=>l.type==="pt");
+    T.req = {from:T.from, to:T.to, arrive:T.arrive, heure:T.heure, depPrevu:first.dep.prevu, ligne:first.ligne};
+    const cfg = {...(S.app.config||{})}; delete cfg.id; const fav = [T.from, T.to, ...(cfg.arrets||[])].filter((a,i,arr)=>a && arr.findIndex(b=>b.ref===a.ref)===i).slice(0,10);
+    cfg.arrets = fav; put("app/config", cfg).catch(()=>{});
+    toast("Trajet ajouté à la tâche"); },
+  async liveTrip(d){ const a = S.agenda[d.d]||{}; const it = (a.items||[]).find(x=>x.id===d.id); if (!it || !it.trajetReq) return;
+    const q = it.trajetReq; S.live[it.id] = "Mise à jour…"; render();
+    try { const r = await api({action:"trajet", from:q.from, to:q.to, time:q.depPrevu, arrive:false, n:4});
+      const t = (r.trajets||[]).find(x=>{ const f = x.legs.find(l=>l.type==="pt"); return f && f.dep.prevu===q.depPrevu; });
+      if (!t){ S.live[it.id] = "Ce trajet n'apparaît plus dans les horaires. Cherche-en un autre dans la tâche."; }
+      else { const f = t.legs.find(l=>l.type==="pt"); const dd = delayMin(f.dep);
+        S.live[it.id] = esc((t.legs.some(l=>l.annule)?"ATTENTION : supprimé\n":"")+(dd>0?"Retard au départ : +"+dd+" min\n":"À l'heure\n")+tripText(t))+'<div class="small muted">Mis à jour à '+hhmm(new Date().toISOString())+'</div>'; }
+    } catch(e){ S.live[it.id] = esc(errMsg(e)); }
+    render(); },
   editFixe(d){ openSheet("fixe", {id:d.id}); },
   async achatFait(d){ const a = S.achats.find(x=>x.id===d.id); if (!a) return; const o = {...a, achete:!a.achete}; try{ await put("achats/"+a.id, o); }catch(e){} },
   async achatClean(d){ const L = S.achats.filter(a=>a.achete && (a.boutique||"Autre")===d.b); try{ for (const a of L) await rm("achats/"+a.id); toast(L.length+" article(s) retiré(s)"); }catch(e){} },
