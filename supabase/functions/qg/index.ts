@@ -162,6 +162,26 @@ async function hevyToday(p: { dossier: string; seance: string }) {
   };
 }
 
+async function hevyDurees() {
+  const types = ["pull", "legs", "push", "lower", "upper"];
+  const parType: Record<string, number[]> = {};
+  for (let page = 1; page <= 3; page++) {
+    const r = await hevy(`/v1/workouts?page=${page}&pageSize=10`);
+    for (const w of r.workouts || []) {
+      const titre = String(w.title || "").toLowerCase();
+      const t = types.find((x) => titre.includes(x));
+      if (!t || !w.start_time || !w.end_time) continue;
+      const min = Math.round((new Date(w.end_time).getTime() - new Date(w.start_time).getTime()) / 60000);
+      if (min < 20 || min > 240) continue;
+      (parType[t] = parType[t] || []).push(min);
+    }
+    if (page >= (r.page_count || 1)) break;
+  }
+  const durees: Record<string, number> = {};
+  for (const t of types) { const L = (parType[t] || []).slice(0, 5); if (L.length) durees[t] = Math.round(L.reduce((a, b) => a + b, 0) / L.length); }
+  return { durees, nb: Object.fromEntries(types.map((t) => [t, Math.min(5, (parType[t] || []).length)])) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
   if (req.method !== "POST") return json(req, { erreur: "methode" }, 405);
@@ -181,6 +201,7 @@ Deno.serve(async (req) => {
       case "arrets": return json(req, { arrets: await stops(String(p.q || "").slice(0, 80)) });
       case "trajet": return json(req, { trajets: await trip(p) });
       case "hevy_seance": return json(req, await hevyToday(p));
+      case "hevy_durees": return json(req, await hevyDurees());
       default: return json(req, { erreur: "action_inconnue" }, 400);
     }
   } catch (e) {
