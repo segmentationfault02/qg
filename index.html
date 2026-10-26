@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-JUdIfUpAyzo4EBbNrCRC15I9RlPym20ocqRk6gNsLHM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-4gvt+oBzBp+SHAYC1ekpi0WuOaIlvn83Q+ub+JGL8b4='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -799,10 +799,59 @@ SHEETS.note = { html(ds){ const n = ds.id ? S.notes.find(x=>x.id===ds.id)||{} : 
 
 SHEETS.mesures = { html(){ const ph = k => { const x = mesLast(k); return x ? kg(x.v).replace(",",".") : ""; };
   const col = L => L.map(([k,l])=>fld("m-"+k,l,"",'inputmode="decimal" placeholder="'+ph(k)+'"')).join("");
-  return '<h2 class="h2">Nouvelle prise</h2>'+fld("m-date","Date",today(),'type="date"')+'<div class="hint">En cm. Ta dernière valeur est affichée en gris. Laisse vide ce que tu n\'as pas mesuré.</div><div class="grid2"><div class="stack">'+col(MES_L)+'</div><div class="stack">'+col(MES_R)+'</div></div>'+sheetBtns(false); },
+  return '<h2 class="h2">Nouvelle prise</h2>'+
+    '<label class="btn pri full" style="cursor:pointer" for="m-capture">Importer une capture RENPHO</label><input type="file" id="m-capture" accept="image/*" hidden><div id="m-ocr" class="small muted"></div>'+
+    fld("m-date","Date",today(),'type="date"')+'<div class="hint">En cm. Ta dernière valeur est affichée en gris. Laisse vide ce que tu n\'as pas mesuré.</div><div class="grid2"><div class="stack">'+col(MES_L)+'</div><div class="stack">'+col(MES_R)+'</div></div>'+sheetBtns(false); },
   async save(){ const d = val("m-date") || today(); const o = {...(S.mesures[d]||{}), date:d}; delete o.id; let n=0;
     MES.forEach(([k])=>{ const v = num(val("m-"+k)); if (v!=null){ o[k]=v; n++; } }); if (!n) return toast("Entre au moins une mesure.",true);
     await put("mesures/"+d, o); toast("Prise enregistrée"); } };
+/* ---------- import capture RENPHO (lecture sur l'appareil) ---------- */
+function loadScript(src){ return new Promise((res,rej)=>{ const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = ()=>rej(new Error("chargement")); document.head.appendChild(sc); }); }
+async function prepImage(file){
+  try { const bmp = await createImageBitmap(file); const k = Math.min(3, Math.max(1, 2000/bmp.width));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
+    const x = c.getContext("2d"); x.filter = "grayscale(1) contrast(1.4)"; x.drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(r=>c.toBlob(b=>r(b||file), "image/png")); } catch(e){ return file; } }
+async function ocrImage(file, onProgress){
+  if (!window.Tesseract) await loadScript("vendor/ocr/tesseract.min.js");
+  const base = new URL("vendor/ocr/", location.href).href;
+  const worker = await window.Tesseract.createWorker("eng", 1, { workerPath: base+"worker.min.js", corePath: base, langPath: base, workerBlobURL: false, gzip: true,
+    logger: m => { if (m.status==="recognizing text" && onProgress) onProgress(Math.round(m.progress*100)); } });
+  try { const img = await prepImage(file); const r = await worker.recognize(img, {}, {blocks:true, text:true});
+    const res = parseRenpho(r.data);
+    const manque = Object.entries(res.labels).filter(([k])=>res.vals[k]==null);
+    if (manque.length){ await worker.setParameters({tessedit_char_whitelist:"0123456789.,", tessedit_pageseg_mode:"7"});
+      for (const [k,b] of manque){ const top = b.y1 + 2, h = Math.round(res.H*0.045);
+        const rr = await worker.recognize(img, {rectangle:{left:Math.max(0,b.x0-8), top, width:Math.round(res.W*0.2), height:h}});
+        const m = /(\d{2,3})[.,](\d)/.exec(rr.data.text||""); if (m){ const v = +(m[1]+"."+m[2]); if (v>=15 && v<=250) res.vals[k] = v; } } }
+    return res.vals; } finally { await worker.terminate(); }
+}
+const OCR_LABELS = [
+  [/^(l|g)[-_ ]?biceps/,"bicepsG"],[/^(r|d)[-_ ]?biceps/,"bicepsD"],[/^(l|g)[-_ ]?(cuisse|thigh)/,"cuisseG"],[/^(r|d)[-_ ]?(cuisse|thigh)/,"cuisseD"],
+  [/^(l|g)[-_ ]?(mollet|calf)/,"molletG"],[/^(r|d)[-_ ]?(mollet|calf)/,"molletD"],[/^(cou|neck)$/,"cou"],[/^(epaule|epaules|shoulder)/,"epaule"],
+  [/^(poitrine|chest)/,"poitrine"],[/^(taille|waist)/,"taille"],[/^abdomen/,"abdomen"],[/^(hanche|hanches|hip)/,"hanche"]];
+function parseRenpho(data){
+  const norm = t => String(t||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9.,-]/g,"");
+  const lines = []; (data.blocks||[]).forEach(b=>(b.paragraphs||[]).forEach(p=>(p.lines||[]).forEach(l=>lines.push(l))));
+  const words = lines.flatMap(l=>l.words||[]);
+  let W = 1, H = 1; words.forEach(w=>{ W = Math.max(W, w.bbox.x1); H = Math.max(H, w.bbox.y1); });
+  const nums = words.map(w=>{ const m = /^(\d{2,3})[.,](\d)$/.exec(String(w.text).trim()); return m ? {v:+(m[1]+"."+m[2]), b:w.bbox, used:false} : null; }).filter(x=>x && x.v>=15 && x.v<=250);
+  const out = {}, labels = {};
+  words.forEach(w=>{ const t = norm(w.text); const hit = OCR_LABELS.find(([re])=>re.test(t)); if (!hit || labels[hit[1]]) return;
+    const lb = w.bbox; labels[hit[1]] = lb; let best = null, bd = Infinity;
+    nums.forEach(n=>{ if (n.used) return; const dy = n.b.y0 - lb.y0, dx = n.b.x0 - lb.x0;
+      if (dy < 4 || dy > H*0.06 || dx < -W*0.04 || dx > W*0.12) return; const d = dy + Math.abs(dx)*0.5; if (d < bd){ bd = d; best = n; } });
+    if (best){ best.used = true; out[hit[1]] = best.v; } });
+  return {vals:out, labels, W, H};
+}
+document.addEventListener("change", async e => { if (e.target.id!=="m-capture" || !e.target.files || !e.target.files[0]) return;
+  const st = document.getElementById("m-ocr"); st.textContent = "Lecture de la capture… (la première fois, le lecteur se télécharge, quelques secondes)";
+  try { const data = await ocrImage(e.target.files[0], p=>{ st.textContent = "Lecture de la capture… "+p+" %"; });
+    const v = data; let n = 0;
+    MES.forEach(([k])=>{ const inp = document.getElementById("m-"+k); if (inp && v[k]!=null){ inp.value = String(v[k]); inp.style.borderColor = "var(--good)"; n++; } });
+    st.innerHTML = n ? '<span class="down">'+n+' valeur'+(n>1?'s':'')+' lue'+(n>1?'s':'')+' sur 12.</span> Vérifie-les (bordure verte), corrige la date si besoin, puis enregistre.' : '<span class="up">Aucune mesure reconnue. Utilise la capture de l\'écran « Général » de RENPHO, en entier.</span>';
+  } catch(err){ st.innerHTML = '<span class="up">La lecture a échoué. Réessaie, ou entre les valeurs à la main.</span>'; }
+  e.target.value = ""; });
 SHEETS.mesure = { html(ds){ const def = MES.find(x=>x[0]===ds.k)||[ds.k,ds.k,"up"]; const L = mesSeries(ds.k);
   let h = '<h2 class="h2">'+esc(def[1])+'</h2>';
   if (!L.length) return h+'<div class="empty">Pas encore de prise pour cette mesure.</div><div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>';
