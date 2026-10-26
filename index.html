@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-4gvt+oBzBp+SHAYC1ekpi0WuOaIlvn83Q+ub+JGL8b4='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-j8Bu4+wS6kf8At+zSyZok9E+Mu+WA8fI9QzMFiL5UdA='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -224,7 +224,7 @@ const sum = (a,f) => a.reduce((s,x)=>s+(f(x)||0),0);
 const S = {
   db:null, dl:null, dbState:"loading",
   loaded:{},
-  app:{}, journal:{}, aliments:{}, achats:[], poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
+  app:{}, journal:{}, aliments:{}, achats:[], seancesHist:[], poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
   view:"accueil", sheet:null,
   ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
@@ -397,7 +397,7 @@ VIEWS.accueil = { title:"QG", body(){
   const P = poidsStats();
   const pToday = S.poids[t];
   const dm = dayMacros(S.app.diet && S.app.diet.jours && S.app.diet.jours[dt]);
-  const ag = S.agenda[t] || {}; const items = (ag.items||[]).slice().sort((a,b)=>(a.heure||"99")<(b.heure||"99")?-1:1);
+  const agDoc = dayDoc(t), items = sortT(agDoc.taches.slice());
   const F = finance(monthOf(t)); const due = dueSoon();
   const wk = weekDoc(mondayOf(t)).jours[String((dow(t)+6)%7)] || {};
   const tr = S.app.training || {};
@@ -424,9 +424,9 @@ VIEWS.accueil = { title:"QG", body(){
 
 
   // Agenda du jour
-  h += '<section class="card"><div class="card-h"><span class="eyebrow">Aujourd\'hui</span><button class="btn sm" data-act="sheet" data-s="item" data-d="'+t+'">+ Ajouter</button></div>';
+  h += '<section class="card"><div class="card-h"><span class="eyebrow">Aujourd\'hui</span><button class="btn sm" data-act="go" data-v="agenda">Agenda</button></div>'+(agDoc.sousTitre?'<div class="small muted">'+esc(agDoc.sousTitre)+'</div>':'');
   if (!items.length) h += '<div class="empty">Rien de prévu pour aujourd\'hui.</div>';
-  else h += '<div class="list">'+items.map(it=>agendaLi(t,it)).join("")+'</div>';
+  else h += '<div class="list">'+items.map(x=>tacheHtml(t, x, agDoc.taches.indexOf(x))).join("")+'</div>';
   h += '</section>';
 
   // Diet
@@ -505,36 +505,6 @@ function tripCard(t, i, act){
     '<div class="row wrap-r" style="gap:6px">'+t.legs.filter(l=>l.type==="pt").map(l=>'<span class="chip '+(/^RE/i.test(l.cat||l.ligne)?'warn':'acc')+'">'+esc(l.ligne||l.cat)+'</span>').join("")+(dd>0?'<span class="chip bad">+'+dd+' min</span>':'')+(t.legs.some(l=>l.annule)?'<span class="chip bad">Supprimé</span>':'')+'</div>'+
     '<div class="small muted" style="white-space:pre-wrap">'+esc(tripText(t))+'</div></button>';
 }
-function agendaLi(d,it){
-  return '<div class="li'+(it.fait?' done':'')+'" style="align-items:flex-start">'+chk(it.fait,"itemDone",'data-d="'+d+'" data-id="'+it.id+'"')+
-    '<div class="grow tap" data-act="sheet" data-s="item" data-d="'+d+'" data-id="'+it.id+'" style="cursor:pointer;min-width:0"><div class="row"><b class="num">'+esc(it.heure||"")+'</b><span class="t">'+esc(it.titre)+'</span></div>'+
-    (it.trajet?'<div class="trajet">'+esc(it.trajet)+'</div>':'')+'</div></div>'+
-    (it.trajetReq && d>=today() ? '<div style="padding:0 0 10px 34px" class="stack"><button class="btn sm" data-act="liveTrip" data-d="'+d+'" data-id="'+it.id+'">Horaires en direct</button>'+(S.live[it.id]?'<div class="trajet" style="border-left-color:var(--good)">'+S.live[it.id]+'</div>':'')+'</div>' : '');
-}
-
-/* ---------- AGENDA ---------- */
-VIEWS.agenda = { title:"Agenda", body(){
-  const t = today(), sel = S.ui.agendaDay;
-  const start = addDays(t,-2);
-  let h = '<div class="days">';
-  for (let i=0;i<10;i++){ const d = addDays(start,i); const a = S.agenda[d]; const has = a && a.items && a.items.length;
-    h += '<button class="day" data-act="agDay" data-d="'+d+'" aria-pressed="'+(d===sel)+'"><span>'+DOWS[dow(d)]+'</span><b class="num">'+parseYmd(d).getDate()+'</b>'+(has?'<i class="dot"></i>':'<i class="dot" style="opacity:0"></i>')+'</button>'; }
-  h += '</div>';
-  const ag = S.agenda[sel]||{}; const items=(ag.items||[]).slice().sort((a,b)=>(a.heure||"99")<(b.heure||"99")?-1:1);
-  h += '<section class="card"><div class="card-h"><h2 class="h2 cap">'+fDay(sel)+'</h2></div></section>';
-  h += '<section class="card"><div class="card-h"><span class="eyebrow">Programme</span><button class="btn sm pri" data-act="sheet" data-s="item" data-d="'+sel+'">+ Tâche</button></div>';
-  h += items.length ? '<div class="list">'+items.map(it=>agendaLi(sel,it)).join("")+'</div>' : '<div class="empty">Journée vide. Ajoute une tâche, ou demande à Claude de monter ton planning.</div>';
-  h += '</section>';
-  const nj = S.notes.filter(n=>n.type==="jour" && n.date===sel), ng = S.notes.filter(n=>n.type!=="jour");
-  h += '<section class="card"><div class="card-h"><span class="eyebrow">Notes du jour</span><button class="btn sm" data-act="sheet" data-s="note" data-type="jour" data-d="'+sel+'">+ Note</button></div>';
-  h += nj.length ? '<div class="list">'+nj.map(noteLi).join("")+'</div>' : '<div class="small muted">Aucune note pour ce jour.</div>';
-  h += '</section><section class="card"><div class="card-h"><span class="eyebrow">Notes globales</span><button class="btn sm" data-act="sheet" data-s="note" data-type="global">+ Note</button></div>';
-  h += ng.length ? '<div class="list">'+ng.sort((a,b)=>(b.cree||"")<(a.cree||"")?-1:1).map(noteLi).join("")+'</div>' : '<div class="small muted">Aucune note globale.</div>';
-  h += '</section>';
-  return h;
-}};
-const noteLi = n => '<div class="li tap" data-act="sheet" data-s="note" data-id="'+n.id+'"><span class="t grow" style="white-space:pre-wrap">'+esc(n.texte)+'</span></div>';
-
 /* ---------- CORPS ---------- */
 VIEWS.corps = { title:"Corps", body(){
   let h = seg("corpsTab", S.ui.corpsTab, [["poids","Poids"],["mesures","Mensurations"],["tension","Tension"]]);
@@ -766,6 +736,7 @@ function renderSheet(){
   const s = SHEETS[S.sheet.type]; if (!s) return;
   document.getElementById("sheet").innerHTML = '<div class="sheet-bg" data-act="sheetBg"><form class="sheet" data-form="sheet" role="dialog" aria-modal="true"><div class="grab"></div>'+s.html(S.sheet.ds)+'</form></div>';
   if (S.sheet.type==="repas") mealDraftTotal();
+  if (S.sheet.type==="tache" && S.sheet.keepTk){ const k = S.sheet.keepTk; [["tk-debut","debut"],["tk-fin","fin"],["tk-titre","titre"]].forEach(([id,f])=>{ const e = document.getElementById(id); if (e && k[f]!=null) e.value = k[f]; }); }
   if (S.sheet.type==="item" && S.sheet.keep){ const k = S.sheet.keep; ["heure","titre","trajet"].forEach(x=>{ const e = document.getElementById("s-"+x); if (e && k[x]!=null) e.value = k[x]; }); }
   const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas") setTimeout(()=>f.focus(),60);
 }
@@ -1081,6 +1052,10 @@ document.addEventListener("submit", async e => {
   if (document.activeElement) document.activeElement.blur();
   try {
     if (k==="sheet"){ const s = S.sheet; await SHEETS[s.type].save(s.ds); if (S.sheet===s && !document.querySelector(".toast.err")) closeSheet(); return; }
+    if (k==="addTache"){ const titre = val("at-titre").trim(); if (!titre) return toast("Écris un titre.", true);
+      const day = S.ui.agendaDay, doc = JSON.parse(JSON.stringify(dayDoc(day))); doc.date = day;
+      doc.taches.push({id:uid(), type:"libre", debut:val("at-heure"), titre, fait:false, faitA:null, trajets:[]});
+      await saveDay(doc); const a = document.getElementById("at-titre"); if (a) a.value = ""; toast("Tâche ajoutée"); return; }
     if (k==="poids"){ const inp = f.querySelector("input"); const v = num(inp.value); if (v==null || v<30 || v>250) return toast("Entre un poids valide, par ex. 82.4",true);
       await put("poids/"+today(), {date:today(), kg:r1(v)}); toast("Pesée notée : "+kg(v)+" kg"); return; }
     if (k==="tension"){ const sys=num(val("t-sys")), dia=num(val("t-dia")), pul=num(val("t-pul")); if (sys==null||dia==null) return toast("Systolique et diastolique obligatoires.",true);
@@ -1092,6 +1067,319 @@ document.addEventListener("submit", async e => {
   } catch(err){}
 });
 document.addEventListener("keydown", e => { if (e.key==="Escape" && S.sheet) closeSheet(); });
+
+/* ================= AGENDA ================= */
+const AR = {
+  servette:{ref:"ch:1:sloid:92903",nom:"Genève, Servette"}, poterie:{ref:"ch:1:sloid:92889",nom:"Genève, Poterie"},
+  cornavin:{ref:"ch:1:sloid:87057",nom:"Genève, gare Cornavin"}, nations:{ref:"ch:1:sloid:87058",nom:"Genève, Nations"},
+  butini:{ref:"ch:1:sloid:92795",nom:"Genève, Butini"}, queue:{ref:"ch:1:sloid:92891",nom:"Genève, Queue-d'Arve"},
+  bac:{ref:"ch:1:sloid:92978",nom:"Petit-Lancy, Chemin du Bac"}, renens:{ref:"8501118",nom:"Renens VD"},
+  avril:{ref:"ch:1:sloid:88839",nom:"Renens VD, 14 Avril"}, croisee:{ref:"ch:1:sloid:92223",nom:"Renens VD, Croisée/Tilleuls"},
+  unimail:{ref:"ch:1:sloid:92915",nom:"Genève, Uni-Mail"}
+};
+const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, durees:{pull:83, legs:82, push:96, lower:71, upper:101} };
+const agCfg = () => Object.assign({}, AGD, (S.app.agenda||{}), {durees:Object.assign({}, AGD.durees, (S.app.agenda||{}).durees||{})});
+const toMin = h => { const m = /^(\d{1,2}):(\d{2})/.exec(h||""); return m ? +m[1]*60 + +m[2] : null; };
+const fromMin = m => { m = Math.max(0, Math.min(24*60-1, Math.round(m))); return pad(Math.floor(m/60))+":"+pad(m%60); };
+const hfr = h => h ? h.replace(":", "h") : "";
+const isoMinLocal = iso => { const d = new Date(iso); return d.getHours()*60 + d.getMinutes(); };
+const isoAt = (dateS, min) => { const [y,m,d] = dateS.split("-").map(Number); return new Date(y, m-1, d, 0, Math.round(min)).toISOString(); };
+const nowHM = () => { const d = new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); };
+const shortStop = n => String(n||"").replace(/^Genève, /,"").replace(/^Renens VD, /,"").replace(/^Petit-Lancy, /,"").replace(/^gare /,"");
+S.durees = null; S.agUi = {shift:false};
+
+function legTxt(l){
+  if (l.type!=="pt") return l.minutes>=3 ? "Marche "+l.minutes+" min" : "";
+  const lab = l.mode==="tram" ? "Tram "+l.ligne : l.mode==="bus" ? "Bus "+l.ligne : (l.ligne||l.cat);
+  const dd = delayMin(l.dep), da = delayMin(l.arr);
+  const voie = l.mode==="rail" && l.dep.voie ? " (voie "+l.dep.voie+")" : "";
+  return lab+" · "+shortStop(l.dep.nom)+" "+hfr(hhmm(l.dep.prevu))+(dd>0?" (+"+dd+")":"")+voie+" → "+shortStop(l.arr.nom)+" "+hfr(hhmm(l.arr.prevu))+(da>0?" (+"+da+")":"")+(l.annule?" · SUPPRIMÉ":"");
+}
+const optLines = o => o ? o.legs.map(legTxt).filter(Boolean) : [];
+function pickOptions(trips, mode, cibleIso){
+  const ok = trips.filter(t=>t.legs.some(l=>l.type==="pt") && !t.legs.some(l=>l.annule));
+  const noRE = ok.filter(t=>!tripHasRE(t)); const pool = noRE.length ? noRE : ok; const c = new Date(cibleIso).getTime();
+  let L = mode==="arriver" ? pool.filter(t=>new Date(t.arrivee).getTime()<=c+60000).sort((a,b)=>a.arrivee>b.arrivee?-1:1)
+                           : pool.filter(t=>new Date(t.depart).getTime()>=c-60000).sort((a,b)=>a.depart<b.depart?-1:1);
+  if (!L.length) L = pool.slice();
+  return L.slice(0,3);
+}
+async function trajetOptions(depuis, vers, mode, dateS, min, cache){
+  const iso = isoAt(dateS, min), k = depuis.ref+"|"+vers.ref+"|"+mode+"|"+iso;
+  if (cache && cache[k]) return cache[k];
+  const r = await api({action:"trajet", from:depuis, to:vers, time:iso, arrive:mode==="arriver", n:6});
+  const o = pickOptions(r.trajets||[], mode, iso); if (cache) cache[k] = o; return o;
+}
+const optSel = tj => tj && tj.options && tj.options[tj.choisi||0];
+const arrMinOf = tj => optSel(tj) ? isoMinLocal(optSel(tj).arrivee) : null;
+const depMinOf = tj => optSel(tj) ? isoMinLocal(optSel(tj).depart) : null;
+function dureeSeance(type){ const c = agCfg(); return (S.durees && S.durees[type]) || c.durees[type] || 80; }
+function loadDurees(){ if (S.durees!==null) return; S.durees = {}; api({action:"hevy_durees"}).then(r=>{ S.durees = r.durees||{}; }).catch(()=>{}); }
+
+/* ---------- données d'un jour ---------- */
+function dayDoc(d){
+  const a = S.agenda[d]; if (!a) return {date:d, taches:[]};
+  if (a.taches) return a;
+  return {...a, taches:(a.items||[]).map(i=>({id:i.id, debut:i.heure||"", titre:i.titre, fait:!!i.fait, type:"libre", trajets:[], trajetTexte:i.trajet||""}))};
+}
+const sortT = L => L.sort((a,b)=>(a.debut||"99:99")<(b.debut||"99:99")?-1:(a.debut||"99:99")>(b.debut||"99:99")?1:0);
+async function saveDay(doc){ const o = JSON.parse(JSON.stringify(doc)); delete o.id; delete o.items; sortT(o.taches); await put("agenda/"+o.date, o); }
+function sousTitre(seance, salle, lieu){
+  const p = [];
+  if (seance && seance!=="repos") p.push(seance+" à "+(salle==="sunset"?"Sunset":"American"));
+  if (lieu==="Renens"||lieu==="Uni-Mail") p.push("école à "+lieu); else if (lieu==="Maison") p.push("école à la maison");
+  return p.join(", ");
+}
+
+/* ---------- rendu d'une tâche ---------- */
+function trajetBlock(tj){
+  const lines = optLines(optSel(tj)); if (!lines.length) return "";
+  if (tj.label) lines[0] = tj.label+" · "+lines[0];
+  return '<div class="trajet">'+lines.map(esc).join("<br>")+'</div>';
+}
+function tacheHtml(d, t, i, opts){
+  opts = opts||{};
+  const heure = t.debut ? hfr(t.debut)+(t.fin?" - "+hfr(t.fin):"") : "";
+  let h = '<div class="li'+(t.fait?' done':'')+'" style="align-items:flex-start">'+(opts.static?'<span class="check" aria-hidden="true"></span>':chk(t.fait,"tFait",'data-d="'+d+'" data-i="'+i+'"'))+
+    (opts.static?'<div class="grow" style="min-width:0">':'<div class="grow tap" data-act="sheet" data-s="tache" data-d="'+d+'" data-i="'+i+'" style="cursor:pointer;min-width:0">')+
+    '<div><b class="num">'+esc(heure)+'</b>'+(heure?'&nbsp; ':'')+'<span class="t">'+esc(t.titre)+'</span></div>'+
+    (t.fait && t.faitA ? '<div class="small muted">fini à '+hfr(t.faitA)+'</div>' : '')+
+    (t.note ? '<div class="small muted">'+esc(t.note)+'</div>' : '')+
+    (t.trajets||[]).map(trajetBlock).join("")+(t.trajetTexte?'<div class="trajet">'+esc(t.trajetTexte)+'</div>':'')+'</div></div>';
+  if (t.type==="seance" && !opts.static && d===today() && !t.fait){
+    const s = t.seance||{};
+    if (!s.debutReel) h += '<div style="padding:0 0 10px 34px"><button class="btn sm pri" data-act="seanceStart" data-d="'+d+'" data-i="'+i+'">J\'ai commencé la séance</button></div>';
+    else if (!s.finReelle) h += '<div style="padding:0 0 10px 34px" class="stack"><span class="small">Commencée à '+hfr(s.debutReel)+', fin estimée '+hfr(t.fin)+'</span><button class="btn sm pri" data-act="seanceFin" data-d="'+d+'" data-i="'+i+'">J\'ai fini la séance</button></div>';
+  }
+  return h;
+}
+
+/* ---------- vue Agenda ---------- */
+VIEWS.agenda = { title:"Agenda", body(){
+  const t = today(), tm = addDays(t,1), sel = S.ui.agendaDay;
+  const ng = S.notes.filter(n=>n.type!=="jour").sort((a,b)=>(b.cree||"")<(a.cree||"")?-1:1);
+  let h = '';
+  if (ng.length) h += '<section class="card" style="gap:6px"><div class="card-h"><span class="eyebrow">Notes</span><button class="btn sm" data-act="sheet" data-s="note" data-type="global">+</button></div>'+ng.map(n=>'<div class="small tap" data-act="sheet" data-s="note" data-id="'+n.id+'" style="cursor:pointer;white-space:pre-wrap">'+esc(n.texte)+'</div>').join("")+'</section>';
+  h += '<button class="btn pri full" style="min-height:52px;font-size:16px" data-act="prepStart">Préparer demain</button>';
+  h += '<div class="seg"><button data-act="agDay" data-d="'+t+'" aria-pressed="'+(sel===t)+'">Aujourd\'hui</button><button data-act="agDay" data-d="'+tm+'" aria-pressed="'+(sel===tm)+'">Demain</button><button data-act="agWeek" aria-pressed="'+(sel==="semaine")+'">Semaine</button></div>';
+  if (sel==="semaine") return h + weekView();
+  h += '<div class="days">';
+  const start = addDays(t,-2);
+  for (let i=0;i<10;i++){ const d = addDays(start,i); const a = S.agenda[d]; const has = a && ((a.taches&&a.taches.length)||(a.items&&a.items.length));
+    h += '<button class="day" data-act="agDay" data-d="'+d+'" aria-pressed="'+(d===sel)+'"><span>'+DOWS[dow(d)]+'</span><b class="num">'+parseYmd(d).getDate()+'</b><i class="dot"'+(has?'':' style="opacity:0"')+'></i></button>'; }
+  h += '</div>';
+  const doc = dayDoc(sel), T = sortT(doc.taches.slice());
+  h += '<section class="card"><div class="card-h"><div><h2 class="h2 cap">'+fDay(sel)+'</h2>'+(doc.sousTitre?'<div class="small muted">'+esc(doc.sousTitre)+'</div>':'')+'</div>'+(doc.statut==="brouillon"?'<span class="chip warn">brouillon</span>':'')+'</div>';
+  h += T.length ? '<div class="list">'+T.map(x=>tacheHtml(sel, x, doc.taches.indexOf(x))).join("")+'</div>' : '<div class="empty">Journée vide.</div>';
+  h += '<form data-form="addTache" class="row" style="gap:8px"><input class="inp num" type="time" id="at-heure" style="width:112px" aria-label="Heure"><input class="inp grow" id="at-titre" placeholder="Nouvelle tâche" aria-label="Titre de la tâche" enterkeyhint="done"><button class="btn" type="submit">Ajouter</button></form>';
+  if (T.length){
+    h += '<div class="row" style="gap:8px"><button class="btn sm grow" data-act="agShift">Décaler tout</button><button class="btn sm grow" data-act="recap">Récap</button></div>';
+    if (S.agUi.shift) h += '<div class="row wrap-r" style="gap:6px">'+[-30,-15,15,30,60].map(n=>'<button class="btn sm" data-act="doShift" data-n="'+n+'">'+(n>0?"+":"")+(Math.abs(n)>=60?(n/60)+" h":n+" min")+'</button>').join("")+'</div><div class="hint">Décale toutes les tâches pas encore faites et recalcule leurs trajets.</div>';
+    if (S.agUi.recap===sel) h += recapHtml(doc);
+  }
+  h += '</section>';
+  const nj = S.notes.filter(n=>n.type==="jour" && n.date===sel);
+  h += '<section class="card" style="gap:6px"><div class="card-h"><span class="eyebrow">Notes du jour</span><button class="btn sm" data-act="sheet" data-s="note" data-type="jour" data-d="'+sel+'">+</button></div>'+(nj.length?nj.map(n=>'<div class="small tap" data-act="sheet" data-s="note" data-id="'+n.id+'" style="cursor:pointer;white-space:pre-wrap">'+esc(n.texte)+'</div>').join(""):'<div class="small muted">Aucune.</div>')+'</section>';
+  if (!ng.length) h += '<button class="btn sm ghost" data-act="sheet" data-s="note" data-type="global">+ Note globale</button>';
+  return h;
+}};
+function weekView(){
+  const mon = mondayOf(today()); let h = '';
+  for (let i=0;i<7;i++){ const d = addDays(mon,i), doc = dayDoc(d), T = sortT(doc.taches.slice());
+    h += '<section class="card tap" data-act="agDay" data-d="'+d+'" style="cursor:pointer;gap:4px"><div class="spread"><b class="cap">'+fDay(d)+'</b>'+(d===today()?'<span class="chip acc">Aujourd\'hui</span>':'')+'</div>'+(doc.sousTitre?'<div class="small muted">'+esc(doc.sousTitre)+'</div>':'')+
+      (T.length?'<div class="small">'+T.slice(0,6).map(x=>(x.fait?"[x] ":"[ ] ")+(x.debut?hfr(x.debut)+" ":"")+esc(x.titre)).join("<br>")+'</div>':'<div class="small muted">Rien de prévu.</div>')+'</section>'; }
+  return h;
+}
+function recapHtml(doc){
+  const T = sortT(doc.taches.slice()), f = T.filter(x=>x.fait), r = T.filter(x=>!x.fait);
+  return '<div class="card" style="background:var(--surface2);gap:8px"><span class="eyebrow">Récap</span>'+
+    '<div class="small"><b>Fait ('+f.length+')</b><br>'+(f.map(x=>esc(x.titre)+(x.faitA?" à "+hfr(x.faitA):"")).join("<br>")||"Rien")+'</div>'+
+    '<div class="small"><b>Reste ('+r.length+')</b><br>'+(r.map(x=>esc(x.titre)).join("<br>")||"Rien")+'</div>'+
+    (r.length?'<button class="btn sm" data-act="reportDemain">Décaler ce qui reste à demain</button>':'')+'</div>';
+}
+
+/* ---------- assistant Préparer demain ---------- */
+S.prep = null;
+function prepInit(){
+  const d = addDays(today(),1), c = agCfg(), sp = splitFor(d), nom = sp && sp.nom ? sp.nom.toLowerCase() : "repos";
+  const wk = weekDoc(mondayOf(d)).jours[String((dow(d)+6)%7)] || {};
+  const lieu = wk.lieu && wk.lieu!=="Pas d'école" ? wk.lieu : (wk.lieu==="Pas d'école" ? "Pas d'école" : "Renens");
+  S.prep = { date:d, step:1, seance:nom, jyvais:nom!=="repos", objectifs:(wk.objectifs||[]).filter(o=>!o.fait),
+    reveil:c.reveil, ez:"rien", ezHeure:"08:30", salle:(S.app.agenda||{}).derniereSalle==="american"?"sunset":"american", lieu, autres:[],
+    cache:{}, choix:{}, taches:null, building:false, err:null, shift:0 };
+  loadDurees();
+}
+VIEWS.prep = { title:"Préparer demain", body(){
+  const P = S.prep; if (!P) { prepInit(); return VIEWS.prep.body(); }
+  const steps = ["Base","Variables","Construction","Vue globale"];
+  let h = '<div class="spread"><b class="cap">'+fDay(P.date)+'</b><button class="btn sm ghost" data-act="prepQuit">Fermer</button></div>';
+  h += '<div class="row" style="gap:6px">'+steps.map((s,i)=>'<span class="chip '+(P.step===i+1?'acc':(P.step>i+1?'good':''))+'" style="flex:1;justify-content:center">'+(i+1)+' · '+s+'</span>').join("")+'</div>';
+  if (P.step===1){
+    h += '<section class="card"><span class="eyebrow">Séance prévue</span><div class="spread"><div class="big">'+esc(P.seance==="repos"?"Repos":P.seance)+'</div></div>';
+    if (P.seance!=="repos") h += seg("prepSet", P.jyvais?"oui":"non", [["oui","J'y vais"],["non","J'y vais pas"]], ' data-f="jyvais"');
+    h += '</section><section class="card"><span class="eyebrow">École</span><div class="mid">'+esc(P.lieu)+'</div>'+
+      (P.objectifs.length?'<div class="small">'+P.objectifs.map(o=>"· "+esc(o.texte)).join("<br>")+'</div>':'<div class="small muted">Aucun objectif pour ce jour.</div>')+'</section>';
+  }
+  if (P.step===2){
+    h += '<section class="card"><div class="field"><label for="pr-reveil">Réveil</label><input class="inp num" type="time" id="pr-reveil" value="'+esc(P.reveil)+'"></div>'+
+      '<span class="eyebrow">Ezekiel</span>'+seg("prepSet", P.ez, [["rien","Rien"],["depose","Dépose"],["recup","Récup"]], ' data-f="ez"')+
+      (P.ez!=="rien"?'<div class="field"><label for="pr-ez">Heure de '+(P.ez==="depose"?"dépose":"récupération")+'</label><input class="inp num" type="time" id="pr-ez" value="'+esc(P.ezHeure)+'"></div>':'')+
+      (P.jyvais && P.seance!=="repos"?'<span class="eyebrow">Salle</span>'+seg("prepSet", P.salle, [["american","American"],["sunset","Sunset"]], ' data-f="salle"'):'')+
+      '<span class="eyebrow">École</span>'+seg("prepSet", P.lieu, [["Renens","Renens"],["Uni-Mail","Uni-Mail"],["Maison","Maison"],["Pas d'école","Aucune"]], ' data-f="lieu"')+
+      '<span class="eyebrow">Autre chose</span>'+(P.autres.length?'<div class="small">'+P.autres.map((a,i)=>hfr(a.heure)+' '+esc(a.titre)+' <button class="btn sm ghost" data-act="prepDelAutre" data-i="'+i+'">Retirer</button>').join("<br>")+'</div>':'')+
+      '<div class="row" style="gap:8px"><input class="inp num" type="time" id="pr-ah" style="width:112px" aria-label="Heure"><input class="inp grow" id="pr-at" placeholder="Rendez-vous, tâche…" aria-label="Titre"><button class="btn" data-act="prepAddAutre">+</button></div></section>';
+  }
+  if (P.step===3){
+    if (P.building) h += '<div class="empty">Calcul des horaires…</div>';
+    else if (P.err) h += '<div class="banner">'+esc(P.err)+'</div><button class="btn" data-act="prepBuild">Réessayer</button>';
+    else if (P.taches){
+      h += '<div class="hint">Pour chaque trajet, choisis l\'option qui te va. La suite se recalcule.</div>';
+      P.taches.forEach((t,ti)=>{ (t.trajets||[]).forEach((tj,ji)=>{
+        h += '<section class="card" style="gap:8px"><span class="eyebrow">'+esc((tj.label?tj.label+" · ":"")+shortStop(tj.depuis.nom)+" → "+shortStop(tj.vers.nom))+'</span><span class="small muted">'+esc(t.titre)+(tj.mode==="arriver"?" · arriver avant "+hfr(tj.heureCible):" · partir après "+hfr(tj.heureCible))+'</span>'+
+          (tj.options.length ? tj.options.map((o,oi)=>'<button class="card" style="text-align:left;gap:4px;padding:10px 12px;cursor:pointer;color:var(--fg);'+(oi===(tj.choisi||0)?'border-color:var(--accent);background:var(--accent-soft)':'')+'" data-act="prepPick" data-k="'+esc(tj.key)+'" data-i="'+oi+'"><b class="num">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+'</b><span class="small muted">'+optLines(o).map(esc).join("<br>")+'</span></button>').join("") : '<div class="small up">Aucun horaire trouvé pour ce trajet.</div>')+'</section>'; }); });
+      if (!P.taches.some(t=>(t.trajets||[]).length)) h += '<div class="empty">Aucun trajet à calculer pour ce jour.</div>';
+    }
+  }
+  if (P.step===4 && P.taches){
+    h += '<section class="card"><div><b class="cap">'+fDay(P.date)+'</b><div class="small muted">'+esc(sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu))+'</div></div><div class="list">'+sortT(P.taches.slice()).map((t,i)=>tacheHtml(P.date, t, i, {static:true})).join("")+'</div></section>';
+    h += '<span class="eyebrow">Décaler tout</span><div class="row wrap-r" style="gap:6px">'+[-30,-15,15,30,60].map(n=>'<button class="btn sm" data-act="prepShift" data-n="'+n+'">'+(n>0?"+":"")+(Math.abs(n)>=60?(n/60)+" h":n+" min")+'</button>').join("")+'</div>';
+  }
+  h += '<div class="row" style="gap:8px">'+(P.step>1?'<button class="btn" data-act="prepNav" data-n="-1">Retour</button>':'')+
+    (P.step<3?'<button class="btn ghost" data-act="prepNav" data-n="1" data-skip="1">Passer</button>':'')+
+    (P.step<4?'<button class="btn pri grow" data-act="prepNav" data-n="1">Suivant</button>':'<button class="btn pri grow" data-act="prepSave">Valider</button>')+'</div>';
+  return h;
+}};
+function prepReadInputs(){ const P = S.prep; if (!P) return; const r = document.getElementById("pr-reveil"), e = document.getElementById("pr-ez"); if (r && r.value) P.reveil = r.value; if (e && e.value) P.ezHeure = e.value; }
+async function prepBuild(){
+  const P = S.prep, c = agCfg(), d = P.date; P.building = true; P.err = null; render();
+  try {
+    const taches = [], mk = o => ({id:uid(), fait:false, faitA:null, trajets:[], ...o});
+    const opt = async (key,label,depuis,vers,mode,min) => { const options = await trajetOptions(depuis,vers,mode,d,min,P.cache);
+      return {key,label,depuis,vers,mode,heureCible:fromMin(min),options,choisi:Math.min(P.choix[key]||0, Math.max(0,options.length-1))}; };
+    const go = P.jyvais && P.seance!=="repos", salleStop = P.salle==="sunset"?AR.bac:AR.queue, salleNom = P.salle==="sunset"?"Sunset":"American";
+    let after = null, tCur = toMin(P.reveil)+c.prepSalle, pos = AR.poterie;
+    if (P.ez==="depose"){ const H = toMin(P.ezHeure); const t1 = mk({type:"depose", debut:fromMin(H), titre:"Dépose Ezekiel"});
+      t1.trajets.push(await opt("depose","",AR.poterie,AR.butini,"arriver",H)); taches.push(t1); after = {stop:AR.butini, min:H+5, tache:t1}; tCur = H+5; }
+    if (go){
+      const tj = after ? await opt("salle","",after.stop,salleStop,"partir",after.min) : await opt("salle","",AR.poterie,salleStop,"partir",tCur);
+      const arr = arrMinOf(tj) ?? tCur+25, deb = arr+5, dur = dureeSeance(P.seance), fin = deb+dur;
+      const ts = mk({type:"seance", debut:fromMin(deb), fin:fromMin(fin), titre:"Séance "+P.seance+" à "+salleNom, seance:{type:P.seance, salle:P.salle, duree:dur}});
+      if (after) after.tache.trajets.push(tj); else ts.trajets.push(tj);
+      const ret = await opt("retour","Retour",salleStop,AR.servette,"partir",fin+c.sortie); ts.trajets.push(ret); taches.push(ts);
+      tCur = (arrMinOf(ret) ?? fin+c.sortie+25) + 5;
+      taches.push(mk({type:"repas", debut:fromMin(tCur), fin:fromMin(tCur+c.repas), titre:"Repas et douche"})); tCur += c.repas;
+    } else { taches.push(mk({type:"repas", debut:"12:00", fin:fromMin(12*60+c.repas), titre:"Repas et douche"})); }
+    if (P.lieu==="Renens" || P.lieu==="Uni-Mail"){ const dest = P.lieu==="Renens"?AR.croisee:AR.unimail;
+      const tj = await opt("ecole","",AR.poterie,dest,"partir",tCur); const a = arrMinOf(tj) ?? tCur+50;
+      taches.push(mk({type:"ecole", debut:fromMin(a+3), titre:"École "+P.lieu, note:P.objectifs.map(o=>o.texte).join(" · "), trajets:[tj]})); pos = dest; }
+    else if (P.lieu==="Maison") taches.push(mk({type:"ecole", debut:fromMin(tCur), titre:"École à la maison", note:P.objectifs.map(o=>o.texte).join(" · ")}));
+    if (P.ez==="recup"){ const H = toMin(P.ezHeure); const t2 = mk({type:"recup", debut:fromMin(H), titre:"Récupérer Ezekiel"});
+      const tj = await opt("recup","",pos,AR.butini,"arriver",H); t2.trajets.push(tj); taches.push(t2);
+      const ec = taches.find(x=>x.type==="ecole"); if (ec && depMinOf(tj)!=null) ec.fin = fromMin(depMinOf(tj)); }
+    P.autres.forEach(a=>taches.push(mk({type:"libre", debut:a.heure, titre:a.titre})));
+    P.taches = sortT(taches);
+  } catch(e){ P.err = errMsg(e); }
+  P.building = false; render();
+}
+async function retimeTrajet(dateS, tj, deltaMin, cache){
+  const m = toMin(tj.heureCible); if (m==null) return tj;
+  const nm = m + deltaMin; const options = await trajetOptions(tj.depuis, tj.vers, tj.mode, dateS, nm, cache||{});
+  return {...tj, heureCible:fromMin(nm), options, choisi:0};
+}
+async function shiftTaches(dateS, taches, n, cache){
+  for (const t of taches){ if (t.fait) continue;
+    if (t.debut) t.debut = fromMin(toMin(t.debut)+n); if (t.fin) t.fin = fromMin(toMin(t.fin)+n);
+    if (t.trajets) for (let j=0;j<t.trajets.length;j++) t.trajets[j] = await retimeTrajet(dateS, t.trajets[j], n, cache); }
+}
+
+/* ---------- édition d'une tâche ---------- */
+SHEETS.tache = { html(ds){ const doc = dayDoc(ds.d), t0 = doc.taches[+ds.i] || {}, t = {...t0, trajets: S.sheet.tkTrajets || t0.trajets || []};
+  return '<h2 class="h2">'+esc(t.titre||"Tâche")+'</h2><div class="grid2">'+fld("tk-debut","Début",t.debut,'type="time"')+fld("tk-fin","Fin",t.fin||"",'type="time"')+'</div>'+fld("tk-titre","Titre",t.titre,"")+
+    (t.trajets||[]).map((tj,j)=>'<div class="card" style="background:var(--surface2);gap:6px"><span class="eyebrow">'+esc(tj.label||"Trajet")+' · '+esc(shortStop(tj.depuis&&tj.depuis.nom))+' → '+esc(shortStop(tj.vers&&tj.vers.nom))+'</span>'+
+      (tj.options||[]).map((o,oi)=>'<button type="button" class="btn sm" style="justify-content:flex-start;text-align:left;'+(oi===(tj.choisi||0)?'border-color:var(--accent);background:var(--accent-soft)':'')+'" data-act="tkPick" data-j="'+j+'" data-i="'+oi+'">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+' · '+esc(o.legs.filter(l=>l.type==="pt").map(l=>l.ligne).join(", "))+'</button>').join("")+
+      '<button type="button" class="btn sm ghost" data-act="tkRefresh" data-j="'+j+'">Actualiser les horaires</button></div>').join("")+
+    (t.trajetTexte?'<div class="trajet">'+esc(t.trajetTexte)+'</div>':'')+
+    '<button type="button" class="btn sm" data-act="tkTrajet">'+((t.trajets||[]).length?"Ajouter un autre trajet":"Ajouter un trajet")+'</button>'+sheetBtns(true); },
+  async save(ds){ const doc = JSON.parse(JSON.stringify(dayDoc(ds.d))), t = doc.taches[+ds.i]; if (!t) return;
+    t.debut = val("tk-debut"); t.fin = val("tk-fin") || null; t.titre = val("tk-titre").trim() || t.titre;
+    if (S.sheet.tkTrajets) t.trajets = S.sheet.tkTrajets;
+    await saveDay(doc); toast("Tâche enregistrée"); },
+  async del(ds){ const doc = JSON.parse(JSON.stringify(dayDoc(ds.d))); doc.taches.splice(+ds.i,1); await saveDay(doc); toast("Tâche supprimée"); } };
+
+Object.assign(ACT, {
+  agWeek(){ S.ui.agendaDay = "semaine"; render(); },
+  agShift(){ S.agUi.shift = !S.agUi.shift; render(); },
+  recap(){ S.agUi.recap = S.agUi.recap===S.ui.agendaDay ? null : S.ui.agendaDay; render(); },
+  async doShift(d){ const day = S.ui.agendaDay, doc = JSON.parse(JSON.stringify(dayDoc(day))); toast("Décalage en cours…");
+    try { await shiftTaches(day, doc.taches, +d.n, {}); await saveDay(doc); S.agUi.shift = false; toast("Journée décalée"); } catch(e){ toast(errMsg(e), true); } },
+  async reportDemain(){ const day = S.ui.agendaDay, doc = JSON.parse(JSON.stringify(dayDoc(day))), tm = addDays(day,1), next = JSON.parse(JSON.stringify(dayDoc(tm)));
+    const reste = doc.taches.filter(x=>!x.fait); if (!reste.length) return;
+    next.taches = next.taches.concat(reste.map(x=>({...x, id:uid(), trajets:[], trajetTexte:"", note:(x.note?x.note+" · ":"")+"reporté du "+fShort(day)})));
+    doc.taches = doc.taches.filter(x=>x.fait);
+    try { await saveDay(next); await saveDay(doc); toast(reste.length+" tâche(s) décalée(s) à demain"); } catch(e){} },
+  async tFait(d){ const doc = JSON.parse(JSON.stringify(dayDoc(d.d))), t = doc.taches[+d.i]; if (!t) return;
+    t.fait = !t.fait; t.faitA = t.fait ? nowHM() : null; try { await saveDay(doc); } catch(e){} },
+  async seanceStart(d){ const doc = JSON.parse(JSON.stringify(dayDoc(d.d))), t = doc.taches[+d.i], c = agCfg(); if (!t) return;
+    const now = nowHM(), dur = (t.seance&&t.seance.duree) || dureeSeance((t.seance||{}).type); t.seance = {...(t.seance||{}), debutReel:now, duree:dur};
+    t.debut = now; t.fin = fromMin(toMin(now)+dur); toast("Séance commencée, calcul du retour…");
+    try { const j = (t.trajets||[]).findIndex(x=>x.label==="Retour"); if (j>=0){ const tj = t.trajets[j]; const options = await trajetOptions(tj.depuis, tj.vers, "partir", d.d, toMin(t.fin)+c.sortie, {}); t.trajets[j] = {...tj, heureCible:fromMin(toMin(t.fin)+c.sortie), options, choisi:0}; }
+      await saveDay(doc); toast("Fin estimée à "+hfr(t.fin)); } catch(e){ await saveDay(doc).catch(()=>{}); toast(errMsg(e), true); } },
+  async seanceFin(d){ const doc = JSON.parse(JSON.stringify(dayDoc(d.d))), t = doc.taches[+d.i], c = agCfg(); if (!t) return;
+    const now = nowHM(); t.seance = {...(t.seance||{}), finReelle:now}; t.fin = now; t.fait = true; t.faitA = now;
+    const minutes = toMin(now) - toMin(t.seance.debutReel||t.debut);
+    try { if (minutes>10) await put("seances/"+uid(), {date:d.d, type:t.seance.type, debut:t.seance.debutReel, fin:now, minutes, source:"app"}); } catch(e){}
+    try { const j = (t.trajets||[]).findIndex(x=>x.label==="Retour"); if (j>=0){ const tj = t.trajets[j]; const options = await trajetOptions(tj.depuis, tj.vers, "partir", d.d, toMin(now)+c.sortie, {}); t.trajets[j] = {...tj, heureCible:fromMin(toMin(now)+c.sortie), options, choisi:0}; }
+      await saveDay(doc); toast("Séance terminée ("+minutes+" min)"); } catch(e){ await saveDay(doc).catch(()=>{}); toast(errMsg(e), true); } },
+  tkPick(d){ const doc = dayDoc(S.sheet.ds.d), t = doc.taches[+S.sheet.ds.i]; S.sheet.tkTrajets = S.sheet.tkTrajets || JSON.parse(JSON.stringify(t.trajets||[]));
+    S.sheet.tkTrajets[+d.j].choisi = +d.i; keepTk(); renderSheet(); },
+  async tkRefresh(d){ const doc = dayDoc(S.sheet.ds.d), t = doc.taches[+S.sheet.ds.i]; S.sheet.tkTrajets = S.sheet.tkTrajets || JSON.parse(JSON.stringify(t.trajets||[]));
+    const tj = S.sheet.tkTrajets[+d.j]; toast("Actualisation…");
+    try { const options = await trajetOptions(tj.depuis, tj.vers, tj.mode, S.sheet.ds.d, toMin(tj.heureCible), {}); S.sheet.tkTrajets[+d.j] = {...tj, options, choisi:0}; keepTk(); renderSheet(); toast("Horaires à jour"); } catch(e){ toast(errMsg(e), true); } },
+  tkTrajet(){ const ds = S.sheet.ds, doc = dayDoc(ds.d), t = doc.taches[+ds.i]; openSheet("trajet", {d:ds.d, i:ds.i, heure:t.debut}); },
+  prepStart(){ prepInit(); S.view = "prep"; renderKeepScroll=false; window.scrollTo(0,0); render(); },
+  prepQuit(){ S.prep = null; S.view = "agenda"; render(); },
+  prepNav(d){ const P = S.prep; prepReadInputs(); P.step = Math.max(1, Math.min(4, P.step + (+d.n)));
+    if (P.step===3 && (+d.n)>0) { P.taches = null; render(); prepBuild(); return; }
+    if (P.step===4 && !P.taches){ P.step = 3; render(); prepBuild(); return; }
+    renderKeepScroll=false; window.scrollTo(0,0); render(); },
+  prepAddAutre(){ const P = S.prep; prepReadInputs(); const h = val("pr-ah"), t = val("pr-at").trim(); if (!t) return toast("Donne un titre.", true); P.autres.push({heure:h, titre:t}); render(); },
+  prepDelAutre(d){ prepReadInputs(); S.prep.autres.splice(+d.i,1); render(); },
+  prepBuild(){ prepBuild(); },
+  prepPick(d){ const P = S.prep; P.choix[d.k] = +d.i; prepBuild(); },
+  async prepShift(d){ const P = S.prep; toast("Décalage…"); try { await shiftTaches(P.date, P.taches, +d.n, P.cache); render(); } catch(e){ toast(errMsg(e), true); } },
+  async prepSave(){ const P = S.prep; if (!P || !P.taches) return;
+    const old = dayDoc(P.date); const libres = (old.taches||[]).filter(x=>x.type==="libre" && !P.taches.some(y=>y.titre===x.titre && y.debut===x.debut));
+    const doc = {date:P.date, statut:"valide", sousTitre:sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu), reveil:P.reveil,
+      seance:{type:P.seance, jyvais:P.jyvais, salle:P.salle}, ecole:{lieu:P.lieu}, ezekiel:P.ez==="rien"?null:{action:P.ez, heure:P.ezHeure}, taches:P.taches.concat(libres)};
+    try { await saveDay(doc); if (P.jyvais){ const cfg = {...(S.app.agenda||{})}; delete cfg.id; cfg.derniereSalle = P.salle; put("app/agenda", cfg).catch(()=>{}); }
+      toast("Journée enregistrée"); S.ui.agendaDay = P.date; S.prep = null; S.view = "agenda"; render(); } catch(e){} }
+});
+// segments de l'assistant : data-f porté par chaque bouton
+ACT.prepSet = (d) => { const P = S.prep; prepReadInputs(); const f = d.f, k = d.k;
+  if (f==="jyvais") P.jyvais = k==="oui"; else if (f==="ez"){ P.ez = k; if (k==="recup" && P.ezHeure==="08:30") P.ezHeure = "16:30"; if (k==="depose" && P.ezHeure==="16:30") P.ezHeure = "08:30"; } else P[f] = k;
+  P.taches = null; render(); };
+function keepTk(){ const s = S.sheet; s.keepTk = {debut:val("tk-debut"), fin:val("tk-fin"), titre:val("tk-titre")}; }
+
+/* ---------- ajout de trajet sur une tâche (recherche libre) ---------- */
+SHEETS.trajet = { html(ds){ if (!S.sheet.tr) S.sheet.tr = {from:AR.poterie, to:null, arrive:true, heure:ds.heure||"", sug:{}};
+  const T = S.sheet.tr, fav = Object.values(AR);
+  const chips = f => '<div class="row wrap-r" style="gap:6px">'+fav.map((a,i)=>'<button type="button" class="chip" style="border:0;cursor:pointer;'+(T[f]&&T[f].ref===a.ref?'background:var(--accent);color:var(--on-accent)':'')+'" data-act="trArret" data-f="'+f+'" data-i="'+i+'">'+esc(shortStop(a.nom))+'</button>').join("")+'</div>';
+  return '<h2 class="h2">Ajouter un trajet</h2><span class="eyebrow">Départ</span>'+chips("from")+'<span class="eyebrow">Arrivée</span>'+chips("to")+
+    '<div class="row" style="gap:8px"><div class="seg" style="flex:1"><button type="button" data-act="trMode2" data-k="dep" aria-pressed="'+(!T.arrive)+'">Partir à</button><button type="button" data-act="trMode2" data-k="arr" aria-pressed="'+T.arrive+'">Arriver à</button></div><input class="inp num" type="time" id="tr2-heure" style="width:118px" value="'+esc(T.heure)+'"></div>'+
+    '<button type="button" class="btn pri" data-act="trGo">Chercher</button><div id="tr2-res" class="stack"></div><div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>'; },
+  async save(){} };
+Object.assign(ACT, {
+  trArret(d){ S.sheet.tr.heure = val("tr2-heure"); S.sheet.tr[d.f] = Object.values(AR)[+d.i]; renderSheet(); },
+  trMode2(d){ S.sheet.tr.heure = val("tr2-heure"); S.sheet.tr.arrive = d.k==="arr"; renderSheet(); },
+  async trGo(){ const T = S.sheet.tr, ds = S.sheet.ds; T.heure = val("tr2-heure"); if (!T.from || !T.to || !T.heure) return toast("Choisis départ, arrivée et heure.", true);
+    const box = document.getElementById("tr2-res"); box.innerHTML = '<div class="small muted">Recherche…</div>';
+    try { const mode = T.arrive?"arriver":"partir"; const options = await trajetOptions(T.from, T.to, mode, ds.d, toMin(T.heure), {});
+      T.cand = {key:"libre", label:"", depuis:T.from, vers:T.to, mode, heureCible:T.heure, options, choisi:0};
+      box.innerHTML = options.length ? options.map((o,oi)=>'<button type="button" class="card" style="text-align:left;gap:4px;padding:10px 12px;cursor:pointer;color:var(--fg)" data-act="trKeep" data-i="'+oi+'"><b class="num">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+'</b><span class="small muted">'+optLines(o).map(esc).join("<br>")+'</span></button>').join("") : '<div class="empty">Aucun trajet trouvé.</div>';
+    } catch(e){ box.innerHTML = '<div class="small up">'+esc(errMsg(e))+'</div>'; } },
+  async trKeep(d){ const T = S.sheet.tr, ds = S.sheet.ds; const doc = JSON.parse(JSON.stringify(dayDoc(ds.d))), t = doc.taches[+ds.i]; if (!t || !T.cand) return;
+    t.trajets = (t.trajets||[]).concat({...T.cand, choisi:+d.i}); try { await saveDay(doc); closeSheet(); toast("Trajet ajouté"); } catch(e){} }
+});
 
 async function doExport(){
   const out = {exporteLe:new Date().toISOString()};
@@ -1105,7 +1393,7 @@ async function doExport(){
 /* ================= SYNCHRO (Supabase) ================= */
 const SB_URL = "https://uzaywupafqbkgupnuege.supabase.co";
 const SB_KEY = "sb_publishable_o-WPy3WbBHjzq4tjvN2fEQ_hE4jk1Qb";
-const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats"];
+const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","seances"];
 const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:"qg-auth"}}) : null;
 const Store = { rows:{}, subs:{}, uid:null,
   emit(col){ const docs = Object.keys(this.rows).filter(p=>p.startsWith(col+"/")).map(p=>{ const o=this.rows[p]; return {id:p.slice(col.length+1), exists:true, data:()=>o}; });
@@ -1210,7 +1498,7 @@ async function start(session){
 async function launch(session){
   if (started) return; started = true;
   Store.uid = session.user.id; S.db = dbAdapter; S.dbState = "ok"; S.dl = true;
-  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats"}[c];
+  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",seances:"seancesHist"}[c];
     const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines","journal","aliments"].includes(c);
     sub(c, L => { S[m] = asMap ? byId(L) : L; }); });
   render();
