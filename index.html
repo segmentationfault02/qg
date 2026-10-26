@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-ATeqm8KbB4G5hGXHWAfbvSt7f4NdFO1I6XWnyTwvJ74='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-9Nv5gjBHSbzzv/9eVachvfxLmT3ksNK5BlQqwij+1No='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -91,7 +91,7 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .icon-btn{appearance:none;border:1px solid var(--line);background:var(--surface2);border-radius:10px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;flex:none}
 
 .seg{display:flex;background:var(--surface2);border-radius:11px;padding:3px;gap:3px}
-.seg button{flex:1;appearance:none;border:0;background:transparent;border-radius:8px;padding:8px 6px;font-size:13.5px;font-weight:600;color:var(--muted);min-height:36px}
+.seg button{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;appearance:none;border:0;background:transparent;border-radius:8px;padding:8px 6px;font-size:13.5px;font-weight:600;color:var(--muted);min-height:36px}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.15)}
 
 .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--muted);white-space:nowrap}
@@ -214,9 +214,9 @@ const sum = (a,f) => a.reduce((s,x)=>s+(f(x)||0),0);
 const S = {
   db:null, dl:null, dbState:"loading",
   loaded:{},
-  app:{}, poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
+  app:{}, journal:{}, aliments:{}, achats:[], poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
   view:"accueil", sheet:null,
-  ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"plan", dietType:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
+  ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
 try { const v = localStorage.getItem("qg.view"); if (v) S.view = v; } catch(e){}
 
@@ -290,7 +290,16 @@ function poidsStats(){
   const a = avg7(L,last.d), b = avg7(L,addDays(last.d,-7));
   return { last, avg:a, prevAvg:b, delta: a!=null&&b!=null ? a-b : null, pct: a!=null&&b ? (a-b)/b*100 : null, list:L };
 }
-function food(id){ const d = S.app.diet; return d && d.aliments && d.aliments[id]; }
+function allFoods(){ const d = S.app.diet; return Object.assign({}, (d && d.aliments) || {}, S.aliments || {}); }
+function food(id){ return allFoods()[id]; }
+function tplDay(type){ const D = S.app.diet; return D && D.jours && D.jours[type]; }
+function journalDraft(d, type){ const t = tplDay(type) || {repas:[]};
+  return {date:d, type, repas:(t.repas||[]).map((r,i)=>({id:"t"+i, heure:r.heure||"", nom:r.nom, note:r.note||"", items:(r.items||[]).map(x=>({a:x.a, q:x.q, etat:x.etat||""})), fait:false}))}; }
+function journalOf(d){ return S.journal[d] ? JSON.parse(JSON.stringify(S.journal[d])) : journalDraft(d, dayType(d)); }
+function journalStats(j){ const all = (j.repas||[]); const eaten = all.filter(r=>r.fait);
+  return { mange: eaten.map(mealMacros).reduce(addM,ZERO), prevu: all.map(mealMacros).reduce(addM,ZERO), tpl: dayMacros(tplDay(j.type)), nbFait: eaten.length, nb: all.length }; }
+const sortRepas = L => L.sort((a,b)=>(a.heure||"99:99")<(b.heure||"99:99")?-1:(a.heure||"99:99")>(b.heure||"99:99")?1:0);
+async function saveJournal(d, j){ const o = {...j, date:d, maj:new Date().toISOString()}; delete o.id; await put("journal/"+d, o); }
 function itemMacros(it){
   const a = food(it.a); if (!a) return {kcal:0,p:0,g:0,l:0};
   const f = it.q/100;
@@ -302,9 +311,9 @@ function mealMacros(m){ return (m.items||[]).map(itemMacros).reduce(addM,ZERO); 
 function dayMacros(day){ return (day && day.repas || []).map(mealMacros).reduce(addM,ZERO); }
 
 function finance(M){
-  const paid = (S.mois[M] && S.mois[M].payes) || {};
-  const fixes = S.fixes.filter(f=>f.actif!==false).map(f=>({...f, paye:!!paid[f.id], echeance: f.jour ? M+"-"+pad(Math.min(dim(M),f.jour)) : null}));
-  const fact = S.factures.filter(f=>f.mois===M);
+  const paid = (S.mois[M] && S.mois[M].payes) || {}, mt = (S.mois[M] && S.mois[M].montants) || {};
+  const fixes = S.fixes.filter(f=>f.actif!==false).map(f=>({...f, habituel:f.montant, montant: typeof mt[f.id]==="number" ? mt[f.id] : null, paye:!!paid[f.id], echeance: f.jour ? M+"-"+pad(Math.min(dim(M),f.jour)) : null}));
+  const fact = S.factures.filter(f=>f.mois===M || (!f.paye && (f.mois||"")<M));
   const dep = S.depenses.filter(d=>d.date && d.date.startsWith(M));
   const tF = sum(fixes,f=>f.montant), tFa = sum(fact,f=>f.montant), tD = sum(dep,d=>d.montant);
   const resteFixes = sum(fixes.filter(f=>!f.paye),f=>f.montant);
@@ -317,8 +326,10 @@ function finance(M){
   const total = tF+tFa+tD;
   return { fixes, fact, dep, tF, tFa, tD, total, reste:resteFixes+resteFact, paye: total-(resteFixes+resteFact),
     revenu, vivre: revenu!=null ? revenu-total : null, fit: parCat.Fit||0, evitable: sum(dep.filter(d=>d.evitable),d=>d.montant), parCat,
-    sansMontant: fixes.filter(f=>typeof f.montant!=="number").length };
+    sansMontant: fixes.filter(f=>typeof f.montant!=="number").length,
+    achats: sum(S.achats.filter(a=>!a.achete),a=>a.prix), nbAchats: S.achats.filter(a=>!a.achete).length };
 }
+function boutiques(){ const set = new Set(((S.app.config||{}).boutiques)||["HSN","iHerb"]); S.achats.forEach(a=>set.add(a.boutique||"Autre")); return [...set]; }
 function dueSoon(){
   const t = today(), lim = addDays(t,7), M = monthOf(t), F = finance(M);
   const items = [];
@@ -409,7 +420,9 @@ VIEWS.accueil = { title:"QG", body(){
 
   // Diet
   h += '<section class="card tap" data-act="go" data-v="diet" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Diet du jour</span><span class="chip acc">'+(dt==="training"?"Training":"Off")+'</span></div>';
-  h += S.app.diet ? '<div class="spread"><div class="mid num">'+Math.round(dm.kcal)+' kcal</div><div class="macros"><span><b class="num">'+Math.round(dm.p)+'</b> P</span><span><b class="num">'+Math.round(dm.g)+'</b> G</span><span><b class="num">'+Math.round(dm.l)+'</b> L</span></div></div>' : '<div class="muted">…</div>';
+  const jt = S.journal[t]; const js = jt ? journalStats(jt) : null;
+  if (js) h += '<div class="spread"><div><span class="mid num">'+Math.round(js.mange.kcal)+'</span><span class="muted"> / '+Math.round(js.prevu.kcal)+' kcal</span></div><span class="small muted">'+js.nbFait+'/'+js.nb+' repas</span></div><div class="bar"><i style="width:'+Math.min(100,js.prevu.kcal?js.mange.kcal/js.prevu.kcal*100:0)+'%"></i></div>';
+  else h += S.app.diet ? '<div class="spread"><div class="mid num">'+Math.round(dm.kcal)+' kcal</div><div class="macros"><span><b class="num">'+Math.round(dm.p)+'</b> P</span><span><b class="num">'+Math.round(dm.g)+'</b> G</span><span><b class="num">'+Math.round(dm.l)+'</b> L</span></div></div>' : '<div class="muted">…</div>';
   h += '</section>';
 
   // Argent
@@ -489,10 +502,11 @@ VIEWS.corps = { title:"Corps", body(){
 
 /* ---------- DIET ---------- */
 VIEWS.diet = { title:"Diet", body(){
-  let h = seg("dietTab", S.ui.dietTab, [["plan","Ma diet"],["riz","Calculateur riz"],["histo","Historique"]]);
+  let h = seg("dietTab", S.ui.dietTab, [["jour","Journal"],["plan","Template"],["riz","Riz"],["histo","Suivi"]]);
   const D = S.app.diet;
   if (loading("app")) return h+'<div class="empty">Chargement…</div>';
   if (!D) return h+'<div class="empty">Ta diet n\'est pas encore dans l\'app. Demande à Claude de l\'ajouter.</div>';
+  if (S.ui.dietTab==="jour") return h + journalView();
   if (S.ui.dietTab==="plan"){
     const ty = S.ui.dietType || dayType(today());
     const day = D.jours && D.jours[ty];
@@ -524,10 +538,51 @@ VIEWS.diet = { title:"Diet", body(){
     }
     return h;
   }
+  h += suiviView();
   const L = S.dietHist.slice().sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
-  h += '<section class="card"><span class="eyebrow">Changements de diet</span>'+(L.length?'<div class="list">'+L.map(x=>'<div class="li" style="align-items:flex-start"><span class="chip">'+fShort(x.date)+'</span><span class="t grow small" style="font-weight:400">'+esc(x.texte)+'</span></div>').join("")+'</div>':'<div class="empty">Pas encore d\'historique.</div>')+'</section>';
+  h += '<section class="card"><span class="eyebrow">Changements de la template</span>'+(L.length?'<div class="list">'+L.map(x=>'<div class="li" style="align-items:flex-start"><span class="chip">'+fShort(x.date)+'</span><span class="t grow small" style="font-weight:400">'+esc(x.texte)+'</span></div>').join("")+'</div>':'<div class="empty">Pas encore d\'historique.</div>')+'</section>';
   return h;
 }};
+function macroBar(label, v, max, unit){ const pct = max ? Math.min(100, v/max*100) : 0;
+  return '<div class="stack" style="gap:4px"><div class="spread small"><span>'+label+'</span><span class="num"><b>'+Math.round(v)+'</b> / '+Math.round(max)+' '+unit+'</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'; }
+function journalView(){
+  const d = S.ui.jourDiet, saved = !!S.journal[d], j = journalOf(d), st = journalStats(j);
+  let h = '<div class="spread"><button class="icon-btn" data-act="jDay" data-n="-1" aria-label="Jour précédent">‹</button><h2 class="h2 cap">'+(d===today()?"Aujourd\'hui":fDay(d))+'</h2><button class="icon-btn" data-act="jDay" data-n="1" aria-label="Jour suivant">›</button></div>';
+  h += '<section class="card"><div class="card-h"><span class="eyebrow">'+(saved?"Journal du jour":"Pas encore commencé · basé sur la template")+'</span></div>'+seg("jType", j.type, [["training","Jour training"],["off","Jour off"]]);
+  h += '<div class="spread"><div><span class="big num">'+Math.round(st.mange.kcal)+'</span><span class="muted"> / '+Math.round(st.prevu.kcal)+' kcal</span></div><span class="chip '+(st.nbFait===st.nb&&st.nb?"good":"acc")+'">'+st.nbFait+'/'+st.nb+' repas</span></div>';
+  h += macroBar("Protéines", st.mange.p, st.prevu.p, "g")+macroBar("Glucides", st.mange.g, st.prevu.g, "g")+macroBar("Lipides", st.mange.l, st.prevu.l, "g");
+  const ecart = st.prevu.kcal - st.tpl.kcal;
+  if (Math.abs(ecart) >= 1) h += '<div class="small '+(ecart>0?"up":"down")+'">Prévu du jour vs template : '+(ecart>0?"+":"")+Math.round(ecart)+' kcal</div>';
+  h += '</section><section class="card">';
+  h += (j.repas||[]).map((r,i)=>{ const mm = mealMacros(r);
+    return '<div class="meal'+(r.fait?' done':'')+'"><div class="row" style="align-items:flex-start">'+chk(r.fait,"jFait",'data-i="'+i+'"')+
+      '<div class="grow tap" data-act="sheet" data-s="repas" data-i="'+i+'" style="cursor:pointer;min-width:0"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span class="t" style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
+      '<div class="small muted" style="margin-top:2px">'+(r.items||[]).map(it=>{ const a = food(it.a)||{nom:it.a,unite:"g"}; return esc(a.nom)+' '+it.q+(a.unite||"g"); }).join(" · ")+'</div>'+
+      ((r.mod||r.ajoute)?'<div class="row" style="gap:6px;margin-top:4px">'+(r.ajoute?'<span class="chip warn">ajouté</span>':'')+(r.mod?'<span class="chip acc">modifié</span>':'')+'</div>':'')+'</div></div></div>'; }).join("") || '<div class="empty">Aucun repas ce jour.</div>';
+  h += '<div class="row"><button class="btn grow" data-act="jAll">Tout valider</button><button class="btn pri grow" data-act="sheet" data-s="repas">+ Repas</button></div></section>';
+  h += '<div class="hint" style="text-align:center">Touche un repas pour changer les grammes, ajouter ou retirer un aliment. La template ne bouge pas.</div>';
+  return h;
+}
+function suiviView(){
+  const days = Object.keys(S.journal).sort().reverse().slice(0,30);
+  if (!days.length) return '<section class="card"><span class="eyebrow">Suivi journalier</span><div class="empty">Ton suivi apparaît dès que tu valides tes premiers repas dans le Journal.</div></section>';
+  const rows = days.map(d=>{ const st = journalStats(S.journal[d]); return {d, type:S.journal[d].type, st}; });
+  const last = rows.slice(0,14).reverse(); const mx = Math.max(...last.map(r=>Math.max(r.st.mange.kcal, r.st.tpl.kcal)), 1);
+  const W=340,H=150,B=20,T=8, bw=(W-8)/last.length;
+  let svg = '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Calories mangées par jour comparées à la template">';
+  last.forEach((r,i)=>{ const x = 4+i*bw, hh = (H-B-T)*r.st.mange.kcal/mx, ht = (H-B-T)*r.st.tpl.kcal/mx;
+    svg += '<rect x="'+(x+bw*0.18).toFixed(1)+'" y="'+(H-B-hh).toFixed(1)+'" width="'+(bw*0.64).toFixed(1)+'" height="'+Math.max(0,hh).toFixed(1)+'" rx="3" fill="var(--accent)"/>'+
+      '<line x1="'+(x+bw*0.08).toFixed(1)+'" x2="'+(x+bw*0.92).toFixed(1)+'" y1="'+(H-B-ht).toFixed(1)+'" y2="'+(H-B-ht).toFixed(1)+'" stroke="var(--fg)" stroke-width="1.6" stroke-dasharray="3 2"/>'+
+      (i%2===0||last.length<8?'<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle">'+parseYmd(r.d).getDate()+'</text>':''); });
+  svg += '</svg>';
+  let h = '<section class="card"><span class="eyebrow">Suivi journalier</span>'+svg+'<div class="row small muted" style="gap:14px"><span><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;vertical-align:middle"></i> mangé</span><span><i style="display:inline-block;width:14px;border-top:2px dashed var(--fg);vertical-align:middle"></i> template</span></div>';
+  h += '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jour</th><th>Kcal</th><th>P</th><th>G</th><th>L</th><th>Respect</th></tr></thead><tbody>'+rows.map(r=>{ const pct = r.st.tpl.kcal ? r.st.mange.kcal/r.st.tpl.kcal*100 : 0; const cls = pct>=95&&pct<=105?"down":"up";
+    return '<tr class="tap" data-act="jOpen" data-d="'+r.d+'" style="cursor:pointer"><td>'+DOWS[dow(r.d)]+' '+fShort(r.d)+' <span class="muted">'+(r.type==="training"?"T":"O")+'</span></td><td>'+Math.round(r.st.mange.kcal)+'</td><td>'+Math.round(r.st.mange.p)+'</td><td>'+Math.round(r.st.mange.g)+'</td><td>'+Math.round(r.st.mange.l)+'</td><td class="'+cls+'">'+Math.round(pct)+'%</td></tr>'; }).join("")+'</tbody></table></div>';
+  const n = rows.length, avg = k => sum(rows,r=>r.st.mange[k])/n;
+  h += '<div class="grid4"><div class="stat"><span class="k">Moy. kcal</span><span class="v num">'+Math.round(avg("kcal"))+'</span></div><div class="stat"><span class="k">Moy. P</span><span class="v num">'+Math.round(avg("p"))+'g</span></div><div class="stat"><span class="k">Moy. G</span><span class="v num">'+Math.round(avg("g"))+'g</span></div><div class="stat"><span class="k">Moy. L</span><span class="v num">'+Math.round(avg("l"))+'g</span></div></div>';
+  h += '<div class="hint">Respect = calories mangées par rapport à la template du jour. Vert entre 95 et 105 %.</div></section>';
+  return h;
+}
 function rizCalc(){
   const out = document.getElementById("rz-out"); if (!out) return null;
   const cru = num(val("rz-cru")), brut = num(val("rz-cuit")), tare = num(val("rz-tare"))||0, por = num(val("rz-portion"));
@@ -545,14 +600,15 @@ const rzv = (id, def) => esc(S.ui.riz[id]!=null ? S.ui.riz[id] : def);
 VIEWS.argent = { title:"Argent", body(){
   const M = S.ui.mois, F = finance(M);
   let h = '<div class="spread"><button class="icon-btn" data-act="mois" data-n="-1" aria-label="Mois précédent">‹</button><h2 class="h2 cap">'+fMonth(M)+'</h2><button class="icon-btn" data-act="mois" data-n="1" aria-label="Mois suivant">›</button></div>';
-  h += seg("argentTab", S.ui.argentTab, [["resume","Résumé"],["fixes","Fixes"],["nouvelles","Nouvelles"],["depenses","Dépenses"]]);
+  h += seg("argentTab", S.ui.argentTab, [["resume","Résumé"],["fixes","Mensuel"],["nouvelles","Factures"],["achats","Achats"],["depenses","Dépenses"]]);
   if (loading("fixes")) return h+'<div class="empty">Chargement…</div>';
   if (S.ui.argentTab==="resume"){
     h += '<section class="card"><div class="card-h"><span class="eyebrow">Reste à payer</span><button class="btn sm" data-act="sheet" data-s="revenu">'+(F.revenu==null?"Saisir le revenu":"Revenu "+chf0(F.revenu))+'</button></div><div class="big num">'+chf(F.reste)+'</div>';
     const pct = F.total ? Math.round(F.paye/F.total*100) : 0;
     h += '<div class="bar"><i style="width:'+pct+'%;background:var(--good)"></i></div><div class="small muted">'+chf0(F.paye)+' réglés sur '+chf0(F.total)+' engagés ce mois</div>';
     h += '<div class="grid2"><div class="stat"><span class="k">Reste à vivre</span><span class="v num '+(F.vivre!=null&&F.vivre<0?"up":"")+'">'+(F.vivre==null?"–":chf0(F.vivre))+'</span></div><div class="stat"><span class="k">Coût du fit</span><span class="v num">'+chf0(F.fit)+'</span></div><div class="stat"><span class="k">Dépenses évitables</span><span class="v num">'+chf0(F.evitable)+'</span></div><div class="stat"><span class="k">Dépenses variables</span><span class="v num">'+chf0(F.tD)+'</span></div></div>';
-    if (F.sansMontant) h += '<div class="banner">'+F.sansMontant+' facture(s) fixe(s) sans montant. Complète-les dans l\'onglet Fixes pour des totaux justes.</div>';
+    if (F.sansMontant) h += '<div class="banner">'+F.sansMontant+' paiement(s) mensuel(s) sans montant pour ce mois. Entre-les dans l\'onglet Mensuel.</div>';
+    if (F.nbAchats) h += '<div class="small muted">À acheter : '+F.nbAchats+' article(s)'+(F.achats?' · '+chf0(F.achats)+' estimés':'')+'</div>';
     h += '</section>';
     const cs = Object.entries(F.parCat).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]); const mx = cs.length?cs[0][1]:1;
     h += '<section class="card"><span class="eyebrow">Par catégorie</span>'+(cs.length?cs.map(([c,v])=>'<div class="stack" style="gap:4px"><div class="spread small"><span>'+esc(c)+'</span><span class="num" style="font-weight:600">'+chf(v)+'</span></div><div class="bar"><i style="width:'+Math.max(3,v/mx*100)+'%"></i></div></div>').join(""):'<div class="empty">Rien d\'engagé ce mois.</div>')+'</section>';
@@ -560,16 +616,33 @@ VIEWS.argent = { title:"Argent", body(){
     return h;
   }
   if (S.ui.argentTab==="fixes"){
-    h += '<section class="card"><div class="card-h"><span class="eyebrow">Obligatoires chaque mois · '+chf0(F.tF)+'</span><button class="btn sm pri" data-act="sheet" data-s="fixe">+ Ajouter</button></div>';
-    h += F.fixes.length ? '<div class="list">'+F.fixes.sort((a,b)=>(a.jour||99)-(b.jour||99)).map(f=>'<div class="li">'+chk(f.paye,"fixePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="fixe" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.jour?"le "+f.jour+" · ":"")+esc(f.categorie||"")+'</div></div><span class="amt num">'+(typeof f.montant==="number"?chf(f.montant):'<span class="chip warn">à saisir</span>')+'</span></div>').join("")+'</div>' : '<div class="empty">Aucune facture fixe.</div>';
-    h += '<div class="hint">Elles reviennent chaque mois. Coche quand c\'est payé pour '+fMonth(M)+'.</div></section>';
+    h += '<section class="card"><div class="card-h"><span class="eyebrow">Chaque mois · '+chf0(F.tF)+'</span><button class="btn sm pri" data-act="sheet" data-s="fixe">+ Ajouter</button></div>';
+    h += F.fixes.length ? '<div class="list">'+F.fixes.sort((a,b)=>(a.jour||99)-(b.jour||99)||String(a.nom).localeCompare(String(b.nom),"fr")).map(f=>'<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"fixePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="montantMois" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.jour?"le "+f.jour+" · ":"")+esc(f.categorie||"")+'</div></div><button class="amt num" style="border:0;background:none;padding:0" data-act="sheet" data-s="montantMois" data-id="'+f.id+'">'+(typeof f.montant==="number"?chf(f.montant):'<span class="chip warn">montant ?</span>')+'</button></div>').join("")+'</div>' : '<div class="empty">Aucun paiement mensuel.</div>';
+    h += '<div class="hint">Touche une ligne pour entrer le montant de '+fMonth(M)+'. Coche quand c\'est payé.</div></section>';
     return h;
   }
   if (S.ui.argentTab==="nouvelles"){
-    h += '<section class="card"><div class="card-h"><span class="eyebrow">Factures du mois · '+chf0(F.tFa)+'</span><button class="btn sm pri" data-act="sheet" data-s="facture">+ Ajouter</button></div>';
+    const aPayer = S.factures.filter(f=>!f.paye), payees = S.factures.filter(f=>f.paye && (f.payeLe?monthOf(f.payeLe):f.mois)===M);
+    const fRow = f => { const late = !f.paye && f.echeance && f.echeance<today();
+      return '<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"facturePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="facture" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.echeance?"échéance "+fShort(f.echeance)+" · ":"")+esc(f.categorie||"")+'</div></div>'+(late?'<span class="chip bad">En retard</span>':'')+'<span class="amt num">'+chf(f.montant)+'</span></div>'; };
+    h += '<section class="card"><div class="card-h"><span class="eyebrow">À payer · '+chf0(sum(aPayer,f=>f.montant))+'</span><button class="btn sm pri" data-act="sheet" data-s="facture">+ Ajouter</button></div>';
+    h += aPayer.length ? '<div class="list">'+aPayer.sort((a,b)=>(a.echeance||"9")<(b.echeance||"9")?-1:1).map(fRow).join("")+'</div>' : '<div class="empty">Aucune facture en attente.</div>';
+    h += '</section><section class="card"><span class="eyebrow">Payées en '+fMonth(M)+' · '+chf0(sum(payees,f=>f.montant))+'</span>'+(payees.length?'<div class="list">'+payees.map(fRow).join("")+'</div>':'<div class="small muted">Rien de payé ce mois.</div>')+'</section>';
+    return h;
     h += F.fact.length ? '<div class="list">'+F.fact.sort((a,b)=>(a.echeance||"")<(b.echeance||"")?-1:1).map(f=>{ const late = !f.paye && f.echeance && f.echeance<today();
       return '<div class="li">'+chk(f.paye,"facturePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="facture" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.echeance?"échéance "+fShort(f.echeance)+" · ":"")+esc(f.categorie||"")+'</div></div>'+(late?'<span class="chip bad">En retard</span>':'')+'<span class="amt num">'+chf(f.montant)+'</span></div>'; }).join("")+'</div>' : '<div class="empty">Aucune nouvelle facture ce mois. Une commande Zalando, une amende, un achat en ligne : ajoute-la ici.</div>';
     h += '</section>';
+    return h;
+  }
+  if (S.ui.argentTab==="achats"){
+    const B = boutiques();
+    h += '<button class="btn pri full" data-act="sheet" data-s="achat">+ Article à acheter</button>';
+    B.forEach(b=>{ const L = S.achats.filter(a=>(a.boutique||"Autre")===b).sort((x,y)=>(x.achete?1:0)-(y.achete?1:0)||(x.cree||"").localeCompare(y.cree||""));
+      const rest = L.filter(a=>!a.achete), tot = sum(rest,a=>a.prix);
+      h += '<section class="card"><div class="card-h"><span class="eyebrow">À acheter · '+esc(b)+'</span><div class="row" style="gap:6px">'+(tot?'<span class="chip">'+chf0(tot)+'</span>':'')+'<button class="btn sm" data-act="sheet" data-s="achat" data-b="'+esc(b)+'">+</button></div></div>';
+      h += L.length ? '<div class="list">'+L.map(a=>'<div class="li'+(a.achete?' done':'')+'">'+chk(a.achete,"achatFait",'data-id="'+a.id+'"')+'<span class="t grow tap" data-act="sheet" data-s="achat" data-id="'+a.id+'" style="cursor:pointer">'+esc(a.nom)+'</span>'+(typeof a.prix==="number"?'<span class="amt num">'+chf(a.prix)+'</span>':'')+'</div>').join("")+'</div>' : '<div class="small muted">Rien à commander.</div>';
+      if (L.some(a=>a.achete)) h += '<button class="btn sm ghost" data-act="achatClean" data-b="'+esc(b)+'">Retirer les articles achetés</button>';
+      h += '</section>'; });
     return h;
   }
   h += '<button class="btn pri full" data-act="sheet" data-s="depense">+ Nouvelle dépense</button>';
@@ -608,7 +681,8 @@ function renderSheet(){
   if (!S.sheet) return;
   const s = SHEETS[S.sheet.type]; if (!s) return;
   document.getElementById("sheet").innerHTML = '<div class="sheet-bg" data-act="sheetBg"><form class="sheet" data-form="sheet" role="dialog" aria-modal="true"><div class="grab"></div>'+s.html(S.sheet.ds)+'</form></div>';
-  const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id) setTimeout(()=>f.focus(),60);
+  if (S.sheet.type==="repas") mealDraftTotal();
+  const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas") setTimeout(()=>f.focus(),60);
 }
 const fld = (id,label,v,attrs) => '<div class="field"><label for="'+id+'">'+label+'</label><input class="inp" id="'+id+'" value="'+esc(v==null?"":v)+'" '+(attrs||"")+'></div>';
 const catSel = (id,cur) => '<div class="field"><label for="'+id+'">Catégorie</label><select class="inp" id="'+id+'">'+cats().map(c=>'<option'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join("")+'</select></div>';
@@ -635,7 +709,7 @@ SHEETS.mesures = { html(){ const ds = Object.keys(S.mesures).sort(); const last 
     await put("mesures/"+today(), o); toast("Mensurations enregistrées"); } };
 
 SHEETS.fixe = { html(ds){ const f = ds.id ? S.fixes.find(x=>x.id===ds.id)||{} : {};
-  return '<h2 class="h2">'+(ds.id?esc(f.nom):"Nouvelle facture fixe")+'</h2>'+fld("s-nom","Nom",f.nom,'placeholder="Abonnement Swisscom"')+'<div class="grid2">'+fld("s-montant","Montant (CHF)",f.montant,'inputmode="decimal"')+fld("s-jour","Jour d\'échéance",f.jour,'inputmode="numeric" placeholder="25"')+'</div>'+catSel("s-cat",f.categorie||"Abonnements")+sheetBtns(!!ds.id); },
+  return '<h2 class="h2">'+(ds.id?esc(f.nom):"Nouvelle facture fixe")+'</h2>'+fld("s-nom","Nom",f.nom,'placeholder="Abonnement Swisscom"')+'<div class="grid2">'+fld("s-montant","Montant habituel (facultatif)",f.montant,'inputmode="decimal"')+fld("s-jour","Jour d\'échéance",f.jour,'inputmode="numeric" placeholder="25"')+'</div>'+catSel("s-cat",f.categorie||"Abonnements")+'<div class="hint">Le montant de chaque mois se saisit dans la liste Mensuel. Le montant habituel sert de proposition.</div>'+sheetBtns(!!ds.id); },
   async save(ds){ const nom = val("s-nom").trim(); if (!nom) return toast("Donne un nom.",true); const id = ds.id||uid(); const f = ds.id?S.fixes.find(x=>x.id===ds.id):{};
     const j = num(val("s-jour")); await put("fixes/"+id, {...f, id, nom, montant:num(val("s-montant")), jour: j?Math.max(1,Math.min(31,Math.round(j))):null, categorie:val("s-cat"), actif:true}); toast("Facture fixe enregistrée"); },
   async del(ds){ await rm("fixes/"+ds.id); toast("Facture fixe supprimée"); } };
@@ -643,7 +717,7 @@ SHEETS.fixe = { html(ds){ const f = ds.id ? S.fixes.find(x=>x.id===ds.id)||{} : 
 SHEETS.facture = { html(ds){ const f = ds.id ? S.factures.find(x=>x.id===ds.id)||{} : {};
   return '<h2 class="h2">'+(ds.id?esc(f.nom):"Nouvelle facture")+'</h2>'+fld("s-nom","Nom",f.nom,'placeholder="Commande Zalando"')+'<div class="grid2">'+fld("s-montant","Montant (CHF)",f.montant,'inputmode="decimal"')+fld("s-ech","Échéance",f.echeance||"",'type="date"')+'</div>'+catSel("s-cat",f.categorie||"Shopping")+sheetBtns(!!ds.id); },
   async save(ds){ const nom = val("s-nom").trim(), m = num(val("s-montant")); if (!nom || m==null) return toast("Nom et montant obligatoires.",true); const id = ds.id||uid(); const f = ds.id?S.factures.find(x=>x.id===ds.id):{};
-    const ech = val("s-ech")||null; await put("factures/"+id, {...f, id, nom, montant:m, echeance:ech, mois:(f&&f.mois)||(ech?monthOf(ech):S.ui.mois), categorie:val("s-cat"), paye:!!(f&&f.paye)}); toast("Facture enregistrée"); },
+    const ech = val("s-ech")||null; await put("factures/"+id, {...f, id, nom, montant:m, echeance:ech, mois:(f&&f.mois)||S.ui.mois, categorie:val("s-cat"), paye:!!(f&&f.paye)}); toast("Facture enregistrée"); },
   async del(ds){ await rm("factures/"+ds.id); toast("Facture supprimée"); } };
 
 SHEETS.depense = { html(ds){ const d = ds.id ? S.depenses.find(x=>x.id===ds.id)||{} : {};
@@ -659,6 +733,57 @@ SHEETS.revenu = { html(){ const M = S.ui.mois; const r = S.mois[M]&&S.mois[M].re
 
 SHEETS.objectif = { html(ds){ return '<h2 class="h2">Objectif · '+DOWL[dow(addDays(S.ui.ecoleWeek,+ds.i))]+'</h2>'+fld("s-obj","Objectif","",'placeholder="Donner 2 corrections"')+sheetBtns(false); },
   async save(ds){ const t = val("s-obj").trim(); if (!t) return toast("Objectif vide.",true); await editDay(+ds.i, j=>{ j.objectifs=(j.objectifs||[]).concat({id:uid(),texte:t,fait:false}); }); toast("Objectif ajouté"); } };
+
+function mealDraftItemsHtml(dr){
+  const F = allFoods();
+  const rows = (dr.items||[]).map((it,k)=>{ const a = F[it.a]||{nom:it.a,unite:"g"}; const m = itemMacros(it);
+    return '<div class="row" style="gap:8px"><span class="grow small" style="min-width:0;overflow-wrap:anywhere">'+esc(a.nom)+'</span><input class="inp num" style="width:84px;min-height:38px;padding:6px 8px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité '+esc(a.nom)+'"><span class="small muted" style="width:26px">'+(a.unite||"g")+'</span><span class="small num muted" style="width:58px;text-align:right" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:32px;height:32px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer">×</button></div>'; }).join("");
+  const opts = Object.entries(F).sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr")).map(([id,a])=>'<option value="'+esc(id)+'"'+(S.sheet.addSel===id?" selected":"")+'>'+esc(a.nom)+'</option>').join("");
+  let add = '<div class="card" style="gap:8px;background:var(--surface2)"><span class="eyebrow">Ajouter un aliment</span><div class="row" style="gap:8px"><select class="inp grow" id="ri-add" style="min-width:0">'+opts+'<option value="__new"'+(S.sheet.addSel==="__new"?" selected":"")+'>Nouvel aliment…</option></select><input class="inp num" style="width:84px" id="ri-addq" inputmode="decimal" placeholder="g"></div>';
+  if (S.sheet.addSel==="__new") add += '<div class="hint">Macros pour 100 g (ou 100 ml), lues sur l\'étiquette.</div><div class="grid2">'+fld("nf-nom","Nom","",'placeholder="Skyr nature"')+'<div class="field"><label for="nf-unite">Unité</label><select class="inp" id="nf-unite"><option value="g">g</option><option value="ml">ml</option></select></div></div><div class="grid4">'+fld("nf-kcal","Kcal","",'inputmode="decimal"')+fld("nf-p","Prot.","",'inputmode="decimal"')+fld("nf-g","Gluc.","",'inputmode="decimal"')+fld("nf-l","Lip.","",'inputmode="decimal"')+'</div>';
+  add += '<button type="button" class="btn" data-act="riAdd">Ajouter au repas</button></div>';
+  return '<div class="stack" id="ri-items">'+(rows||'<div class="small muted">Aucun aliment pour l\'instant.</div>')+'</div>'+add;
+}
+function mealDraftTotal(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const m = mealMacros(dr); const el = document.getElementById("ri-tot");
+  if (el) el.innerHTML = '<b class="num">'+Math.round(m.kcal)+' kcal</b> · P '+r1(m.p)+' · G '+r1(m.g)+' · L '+r1(m.l); }
+SHEETS.repas = { html(ds){
+  if (!S.sheet.draft){ const j = journalOf(S.ui.jourDiet); const r = ds.i!=null && ds.i!=="" ? j.repas[+ds.i] : null;
+    S.sheet.draft = r ? JSON.parse(JSON.stringify(r)) : {heure:"", nom:"", items:[], fait:true}; S.sheet.addSel = S.sheet.addSel || "poulet"; }
+  const dr = S.sheet.draft; const isNew = !(ds.i!=null && ds.i!=="");
+  return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · '+fShort(S.ui.jourDiet)+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
+    mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+sheetBtns(!isNew); },
+  async save(ds){ const dr = S.sheet.draft; syncDraft(); dr.nom = (dr.nom||"").trim() || "Repas"; dr.items = dr.items.filter(x=>x.q>0);
+    const d = S.ui.jourDiet, j = journalOf(d);
+    if (ds.i!=null && ds.i!==""){ j.repas[+ds.i] = {...j.repas[+ds.i], ...dr, mod:true}; }
+    else j.repas.push({...dr, id:uid(), ajoute:true});
+    sortRepas(j.repas); await saveJournal(d, j); toast("Repas enregistré"); },
+  async del(ds){ const d = S.ui.jourDiet, j = journalOf(d); j.repas.splice(+ds.i,1); await saveJournal(d, j); toast("Repas retiré pour ce jour"); } };
+function syncDraft(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
+  const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value;
+  dr.items.forEach((it,k)=>{ const e = document.getElementById("ri-q-"+k); if (e){ const v = num(e.value); it.q = v==null?0:v; } }); }
+document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="repas") return;
+  if (t.id && t.id.startsWith("ri-q-")){ syncDraft(); const k = t.dataset.k; const m = itemMacros(S.sheet.draft.items[k]); const el = document.getElementById("ri-k-"+k); if (el) el.textContent = Math.round(m.kcal)+" kcal"; mealDraftTotal(); } });
+document.addEventListener("change", e => { if (e.target.id==="ri-add" && S.sheet){ syncDraft(); S.sheet.addSel = e.target.value; renderSheet(); } });
+SHEETS.montantMois = { html(ds){ const M = S.ui.mois, f = S.fixes.find(x=>x.id===ds.id)||{}; const m = S.mois[M]||{}; const cur = (m.montants||{})[ds.id];
+    const prevM = addMonths(M,-1), prev = ((S.mois[prevM]||{}).montants||{})[ds.id]; const sugg = typeof prev==="number" ? prev : f.montant;
+    return '<h2 class="h2">'+esc(f.nom)+' · <span class="cap">'+fMonth(M)+'</span></h2>'+fld("s-mm","Montant ce mois (CHF)",typeof cur==="number"?cur:"",'inputmode="decimal" placeholder="'+(typeof sugg==="number"?sugg:"")+'"')+
+      (typeof prev==="number"?'<div class="hint">Le mois passé : '+chf(prev)+'</div>':'')+'<label class="row small" style="gap:8px"><input type="checkbox" id="s-mp"'+((m.payes||{})[ds.id]?" checked":"")+' style="width:20px;height:20px"> Payé</label>'+
+      '<button type="button" class="btn sm ghost" data-act="editFixe" data-id="'+ds.id+'">Modifier ce paiement mensuel (nom, échéance, catégorie)</button>'+sheetBtns(false); },
+  async save(ds){ const M = S.ui.mois, m = {...(S.mois[M]||{})}; let v = num(val("s-mm")); if (v==null){ const ph = document.getElementById("s-mm").placeholder; v = num(ph); }
+    m.montants = {...(m.montants||{})}; if (v==null) delete m.montants[ds.id]; else m.montants[ds.id] = v;
+    m.payes = {...(m.payes||{})}; if (document.getElementById("s-mp").checked) m.payes[ds.id] = m.payes[ds.id] || today(); else delete m.payes[ds.id];
+    delete m.id; await put("mois/"+M, m); toast("Montant enregistré"); } };
+
+SHEETS.achat = { html(ds){ const a = ds.id ? S.achats.find(x=>x.id===ds.id)||{} : {}; const b = a.boutique || ds.b || "iHerb";
+    return '<h2 class="h2">'+(ds.id?esc(a.nom):"À acheter")+'</h2>'+fld("s-an","Article",a.nom,'placeholder="Whey 2 kg"')+
+      '<div class="grid2"><div class="field"><label for="s-ab">Boutique</label><select class="inp" id="s-ab">'+boutiques().map(x=>'<option'+(x===b?" selected":"")+'>'+esc(x)+'</option>').join("")+'<option value="__new">Autre boutique…</option></select></div>'+fld("s-ap","Prix estimé (CHF)",a.prix,'inputmode="decimal"')+'</div>'+
+      fld("s-abn","Nouvelle boutique (si « Autre »)","",'placeholder="Decathlon"')+sheetBtns(!!ds.id); },
+  async save(ds){ const nom = val("s-an").trim(); if (!nom) return toast("Nom de l\'article obligatoire.",true);
+    let b = val("s-ab"); if (b==="__new"){ b = val("s-abn").trim(); if (!b) return toast("Donne le nom de la boutique.",true);
+      const cfg = {...(S.app.config||{})}; cfg.boutiques = [...new Set([...(cfg.boutiques||["HSN","iHerb"]), b])]; delete cfg.id; await put("app/config", cfg); }
+    const a = ds.id ? S.achats.find(x=>x.id===ds.id) : null; const id = ds.id||uid();
+    await put("achats/"+id, {id, nom, boutique:b, prix:num(val("s-ap")), achete:!!(a&&a.achete), cree:(a&&a.cree)||new Date().toISOString()}); toast("Article enregistré"); },
+  async del(ds){ await rm("achats/"+ds.id); toast("Article retiré"); } };
 
 SHEETS.projet = { html(ds){ const p = ds.id ? ((S.app.ecole||{}).projets||[]).find(x=>x.id===ds.id)||{} : {};
   return '<h2 class="h2">'+(ds.id?esc(p.nom):"Nouveau projet")+'</h2>'+fld("s-nom","Projet",p.nom,'placeholder="CPP05"')+'<div class="grid2">'+fld("s-pts","Points pour pousser",p.pts,'inputmode="numeric"')+'<div class="field"><label for="s-st">Statut</label><select class="inp" id="s-st"><option value="afaire"'+(p.statut==="afaire"?" selected":"")+'>À faire</option><option value="pousser"'+(p.statut==="pousser"?" selected":"")+'>À pousser</option><option value="valide"'+(p.statut==="valide"?" selected":"")+'>Validé</option></select></div></div>'+fld("s-pnote","Note",p.note,"")+sheetBtns(!!ds.id); },
@@ -711,14 +836,34 @@ const ACT = {
     try { await SHEETS[s.type].del(s.ds); closeSheet(); } catch(e){} },
   async ez(d){ const a = S.agenda[d.d]||{}; const v = a.ezekiel===d.k ? "" : d.k; try{ await put("agenda/"+d.d, {...a, date:d.d, items:a.items||[], ezekiel:v}); }catch(e){} },
   async itemDone(d){ const a = S.agenda[d.d]||{}; const items = (a.items||[]).map(x=>x.id===d.id?{...x,fait:!x.fait}:x); try{ await put("agenda/"+d.d,{...a,items}); }catch(e){} },
-  async fixePaye(d){ const M = S.ui.mois; const m = S.mois[M]||{}; const p = {...(m.payes||{})}; if (p[d.id]) delete p[d.id]; else p[d.id]=today(); try{ await put("mois/"+M,{...m,payes:p}); }catch(e){} },
+  async fixePaye(d){ const M = S.ui.mois; const m = S.mois[M]||{}; const p = {...(m.payes||{})}; if (p[d.id]) delete p[d.id]; else p[d.id]=today(); const o = {...m,payes:p}; delete o.id; try{ await put("mois/"+M,o); }catch(e){} },
   async facturePaye(d){ const f = S.factures.find(x=>x.id===d.id); if (!f) return; try{ await put("factures/"+f.id,{...f,paye:!f.paye,payeLe:!f.paye?today():null}); }catch(e){} },
   async pts(d){ const E = {...(S.app.ecole||{})}; E.points = Math.max(0,(typeof E.points==="number"?E.points:0)+(+d.n)); try{ await put("app/ecole",E); }catch(e){} },
   async projStat(d){ const E = {...(S.app.ecole||{})}; const nx = {afaire:"pousser",pousser:"valide",valide:"afaire"}; E.projets=(E.projets||[]).map(p=>p.id===d.id?{...p,statut:nx[p.statut]||"pousser"}:p); try{ await put("app/ecole",E); }catch(e){} },
   async lieu(d){ try{ await editDay(+d.i, j=>{ j.lieu = j.lieu===d.k ? null : d.k; }); }catch(e){} },
   async objDone(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).map(o=>o.id===d.id?{...o,fait:!o.fait}:o); }); }catch(e){} },
   async objDel(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).filter(o=>o.id!==d.id); }); }catch(e){} },
-  async export(){ await doExport(); }
+  async export(){ await doExport(); },
+  editFixe(d){ openSheet("fixe", {id:d.id}); },
+  async achatFait(d){ const a = S.achats.find(x=>x.id===d.id); if (!a) return; const o = {...a, achete:!a.achete}; try{ await put("achats/"+a.id, o); }catch(e){} },
+  async achatClean(d){ const L = S.achats.filter(a=>a.achete && (a.boutique||"Autre")===d.b); try{ for (const a of L) await rm("achats/"+a.id); toast(L.length+" article(s) retiré(s)"); }catch(e){} },
+  jDay(d){ S.ui.jourDiet = addDays(S.ui.jourDiet,+d.n); S.ui.typeArm = null; render(); },
+  jOpen(d){ S.ui.jourDiet = d.d; S.ui.dietTab = "jour"; renderKeepScroll=false; window.scrollTo(0,0); render(); },
+  async jType(d){ const day = S.ui.jourDiet, j = journalOf(day); if (j.type===d.k) return;
+    const touched = S.journal[day] && (j.repas||[]).some(r=>r.fait||r.mod||r.ajoute);
+    if (touched && S.ui.typeArm!==d.k){ S.ui.typeArm = d.k; return toast("Touche encore pour remplacer les repas du jour par la template "+(d.k==="training"?"training":"off")+"."); }
+    S.ui.typeArm = null; try{ await saveJournal(day, journalDraft(day, d.k)); }catch(e){} },
+  async jFait(d){ const day = S.ui.jourDiet, j = journalOf(day); j.repas[+d.i].fait = !j.repas[+d.i].fait; try{ await saveJournal(day, j); }catch(e){} },
+  async jAll(){ const day = S.ui.jourDiet, j = journalOf(day); const all = j.repas.every(r=>r.fait); j.repas.forEach(r=>{ r.fait = !all; }); try{ await saveJournal(day, j); toast(all?"Repas décochés":"Journée validée"); }catch(e){} },
+  riDel(d){ syncDraft(); S.sheet.draft.items.splice(+d.k,1); renderSheet(); },
+  async riAdd(){ syncDraft(); const sel = val("ri-add"), q = num(val("ri-addq"));
+    if (q==null || q<=0) return toast("Entre une quantité.", true);
+    let id = sel;
+    if (sel==="__new"){ const nom = val("nf-nom").trim(), kc = num(val("nf-kcal")), p = num(val("nf-p")), g = num(val("nf-g")), l = num(val("nf-l"));
+      if (!nom || kc==null || p==null || g==null || l==null) return toast("Nom et les 4 valeurs pour 100 g sont obligatoires.", true);
+      id = "perso-"+uid(); try{ await put("aliments/"+id, {nom, unite:val("nf-unite")||"g", kcal:kc, p, g, l, perso:true}); }catch(e){ return; }
+      S.sheet.addSel = id; }
+    S.sheet.draft.items.push({a:id, q}); renderSheet(); }
 };
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]"); if (!el) return;
@@ -756,7 +901,7 @@ async function doExport(){
 /* ================= SYNCHRO (Supabase) ================= */
 const SB_URL = "https://uzaywupafqbkgupnuege.supabase.co";
 const SB_KEY = "sb_publishable_o-WPy3WbBHjzq4tjvN2fEQ_hE4jk1Qb";
-const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique"];
+const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats"];
 const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:"qg-auth"}}) : null;
 const Store = { rows:{}, subs:{}, uid:null,
   emit(col){ const docs = Object.keys(this.rows).filter(p=>p.startsWith(col+"/")).map(p=>{ const o=this.rows[p]; return {id:p.slice(col.length+1), exists:true, data:()=>o}; });
@@ -861,8 +1006,8 @@ async function start(session){
 async function launch(session){
   if (started) return; started = true;
   Store.uid = session.user.id; S.db = dbAdapter; S.dbState = "ok"; S.dl = true;
-  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist"}[c];
-    const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines"].includes(c);
+  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats"}[c];
+    const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines","journal","aliments"].includes(c);
     sub(c, L => { S[m] = asMap ? byId(L) : L; }); });
   render();
   try { await Store.loadAll(); } catch(e){ toast("Impossible de charger tes données. Vérifie ta connexion.", true); }
