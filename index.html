@@ -786,16 +786,18 @@ function sub(col, apply){
 const byId = (list) => { const o = {}; list.forEach(x=>{ o[x.id]=x; }); return o; };
 
 /* ---------- connexion ---------- */
+let authMode = "in";
 function renderLogin(msg, err){
+  const up = authMode==="up";
   document.getElementById("ttl").textContent = "QG";
   document.getElementById("sub").textContent = "";
   document.getElementById("tabs").innerHTML = "";
-  $app.innerHTML = '<form class="login" data-form="login"><div class="big">QG</div><div class="muted">Connecte-toi pour ouvrir ton app.</div>'+
+  $app.innerHTML = '<form class="login" data-form="login"><div class="big">QG</div><div class="muted">'+(up?"Crée ton compte. Le premier compte devient le seul propriétaire du QG.":"Connecte-toi pour ouvrir ton app.")+'</div>'+
     (msg?'<div class="'+(err?"banner":"card small")+'">'+esc(msg)+'</div>':'')+
     '<div class="field"><label for="lg-mail">Email</label><input class="inp" id="lg-mail" type="email" autocomplete="username" inputmode="email" required></div>'+
-    '<div class="field"><label for="lg-pass">Mot de passe</label><input class="inp" id="lg-pass" type="password" autocomplete="current-password" minlength="8" required></div>'+
-    '<button class="btn pri full" type="submit" data-mode="in">Se connecter</button>'+
-    '<button class="btn ghost full" type="button" data-act="signup">Première fois : créer mon compte</button></form>';
+    '<div class="field"><label for="lg-pass">Mot de passe</label><input class="inp" id="lg-pass" type="password" autocomplete="'+(up?"new-password":"current-password")+'" minlength="8" required></div>'+
+    '<button class="btn pri full" type="submit">'+(up?"Créer mon compte":"Se connecter")+'</button>'+
+    '<button class="btn ghost full" type="button" data-act="authMode">'+(up?"J\'ai déjà un compte : me connecter":"Première fois : créer mon compte")+'</button></form>';
 }
 const AUTH_ERR = m => /invalid login/i.test(m) ? "Email ou mot de passe incorrect." : /not confirmed/i.test(m) ? "Confirme d'abord ton email avec le lien reçu, puis reconnecte-toi." : /fermees|database error/i.test(m) ? "Les inscriptions sont fermées : ce QG a déjà son propriétaire." : /password/i.test(m) ? "Mot de passe trop court : 8 caractères minimum." : m;
 ACT.signup = async () => {
@@ -804,11 +806,14 @@ ACT.signup = async () => {
   const {data, error} = await sb.auth.signUp({email, password, options:{emailRedirectTo: location.origin+location.pathname}});
   if (error) return renderLogin(AUTH_ERR(error.message), true);
   if (data.session) return start(data.session);
+  authMode = "in";
   renderLogin("Compte créé. Ouvre l'email de confirmation, touche le lien, puis reviens ici te connecter.");
 };
+ACT.authMode = () => { const m = val("lg-mail"); authMode = authMode==="up" ? "in" : "up"; renderLogin(); const e = document.getElementById("lg-mail"); if (e) e.value = m; };
 ACT.logout = async () => { await sb.auth.signOut(); location.reload(); };
 document.addEventListener("submit", async e => {
   if (e.target.dataset.form!=="login") return; e.preventDefault();
+  if (authMode==="up") return ACT.signup();
   const {data, error} = await sb.auth.signInWithPassword({email:val("lg-mail").trim(), password:val("lg-pass")});
   if (error) return renderLogin(AUTH_ERR(error.message), true);
   start(data.session);
