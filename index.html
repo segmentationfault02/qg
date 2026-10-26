@@ -10,13 +10,15 @@
 <meta name="apple-mobile-web-app-title" content="QG">
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-ATeqm8KbB4G5hGXHWAfbvSt7f4NdFO1I6XWnyTwvJ74='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="vendor/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o"></script>
 <style>
 /* Layout : app mobile à une colonne, en-tête collant, barre d'onglets fixe en bas ; tons fonte et laiton. */
 :root{
@@ -812,6 +814,11 @@ ACT.signup = async () => {
 ACT.authMode = () => { const m = val("lg-mail"); authMode = authMode==="up" ? "in" : "up"; renderLogin(); const e = document.getElementById("lg-mail"); if (e) e.value = m; };
 ACT.logout = async () => { await sb.auth.signOut(); location.reload(); };
 document.addEventListener("submit", async e => {
+  if (e.target.dataset.form==="mfa"){ e.preventDefault();
+    const code = val("mfa-code").replace(/\D/g,""); if (code.length!==6) return renderMfa(mfaState, "Entre les 6 chiffres du code.");
+    const {error} = await sb.auth.mfa.challengeAndVerify({factorId:mfaState.factorId, code});
+    if (error) return renderMfa(mfaState, "Code incorrect ou expiré. Prends le code actuel et réessaie.");
+    const {data} = await sb.auth.getSession(); return launch(data.session); }
   if (e.target.dataset.form!=="login") return; e.preventDefault();
   if (authMode==="up") return ACT.signup();
   const {data, error} = await sb.auth.signInWithPassword({email:val("lg-mail").trim(), password:val("lg-pass")});
@@ -819,8 +826,39 @@ document.addEventListener("submit", async e => {
   start(data.session);
 }, true);
 
-let started = false;
+let started = false, gating = false;
+async function mfaGate(){
+  const {data:aal} = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal && aal.currentLevel==="aal2") return true;
+  const {data:f, error} = await sb.auth.mfa.listFactors(); if (error) throw error;
+  const ok = (f.totp||[]).filter(x=>x.status==="verified");
+  if (ok.length){ renderMfa({mode:"code", factorId:ok[0].id}); return false; }
+  for (const x of (f.all||[])) if (x.status!=="verified") await sb.auth.mfa.unenroll({factorId:x.id});
+  const {data:en, error:e2} = await sb.auth.mfa.enroll({factorType:"totp", friendlyName:"QG iPhone "+Date.now().toString(36)}); if (e2) throw e2;
+  renderMfa({mode:"enroll", factorId:en.id, qr:en.totp.qr_code, secret:en.totp.secret, uri:en.totp.uri}); return false;
+}
+let mfaState = null;
+function renderMfa(st, msg){
+  mfaState = st;
+  const en = st.mode==="enroll";
+  $app.innerHTML = '<form class="login" data-form="mfa"><div class="big">QG</div>'+
+    (en ? '<div class="h2">Active la double sécurité</div><div class="small">Sans ce code à 6 chiffres, personne ne peut lire tes données, même avec ton mot de passe.</div>'+
+      '<div class="card small"><b>1.</b> Touche ce bouton : ton iPhone propose d\'ajouter le code dans l\'app Mots de passe.<a class="btn pri full" href="'+esc(st.uri)+'">Ajouter le code à mon iPhone</a>'+
+      '<b>Si rien ne s\'ouvre :</b> app Mots de passe, Codes, +, Saisir la clé de configuration, puis colle cette clé :<div class="row"><code class="grow" style="overflow-wrap:anywhere;font-size:13px">'+esc(st.secret)+'</code><button class="btn sm" type="button" data-act="copySecret">Copier</button></div>'+
+      '<div class="small muted">Ou scanne ce QR code avec un autre appareil :</div><img src="'+esc(st.qr)+'" alt="QR code de configuration" style="width:160px;height:160px;background:#fff;border-radius:8px;padding:6px"></div>'+
+      '<div class="small"><b>2.</b> Entre le code à 6 chiffres affiché pour QG :</div>'
+    : '<div class="h2">Code de sécurité</div><div class="small muted">Ouvre l\'app Mots de passe, section Codes, et entre le code à 6 chiffres de QG.</div>')+
+    (msg?'<div class="banner">'+esc(msg)+'</div>':'')+
+    '<input class="inp big-inp num" id="mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required>'+
+    '<button class="btn pri full" type="submit">Valider</button><button class="btn ghost full" type="button" data-act="logout">Se déconnecter</button></form>';
+}
+ACT.copySecret = () => { const s = mfaState && mfaState.secret; if (!s) return; navigator.clipboard.writeText(s).then(()=>toast("Clé copiée"), ()=>toast("Copie impossible : sélectionne la clé à la main.", true)); };
 async function start(session){
+  if (started || gating) return; gating = true;
+  try { const ok = await mfaGate(); gating = false; if (ok) launch(session); }
+  catch(e){ gating = false; renderLogin("Erreur de sécurité : "+(e.message||e)+". Réessaie.", true); }
+}
+async function launch(session){
   if (started) return; started = true;
   Store.uid = session.user.id; S.db = dbAdapter; S.dbState = "ok"; S.dl = true;
   COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist"}[c];
