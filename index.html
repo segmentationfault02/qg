@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-Npy9N/9mu1TRrHplsjbS9u5TTEKmsDpehRX/2KM+BA8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-NWFGToIeTUfXP5beZPZpZZAS7MaPaVTXsHtd96M6DRA='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -453,7 +453,7 @@ VIEWS.accueil = { title:"QG", body(){
   h += obj.length ? '<div class="small">'+obj.map(o=>(o.fait?"✓ ":"· ")+esc(o.texte)).join("<br>")+'</div>' : '<div class="small muted">Pas d\'objectif noté pour aujourd\'hui.</div>';
   h += '</section>';
 
-  h += '<section class="card"><span class="eyebrow">Sauvegarde</span><div class="small muted">Télécharge toutes tes données en un fichier, une fois par mois.</div><div class="row"><button class="btn grow" data-act="export">Exporter mes données</button><button class="btn ghost" data-act="logout">Déconnexion</button></div></section>';
+  h += '<section class="card"><span class="eyebrow">Sauvegarde</span><div class="small muted">Télécharge toutes tes données en un fichier, une fois par mois.</div><div class="row"><button class="btn grow" data-act="export">Exporter mes données</button><button class="btn ghost" data-act="logout">Déconnexion</button></div><div class="small muted" style="text-align:center">Version '+APP_VERSION.replace(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d).*/,"$3.$2 $4h$5")+'</div></section>';
   return h;
 }};
 
@@ -1545,7 +1545,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261026190815";
+const APP_VERSION = "20261026190924";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
