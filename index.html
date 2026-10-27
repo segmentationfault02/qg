@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-fQgR+zP06BBINo332sUmUuvTxHj/8uWOumP3mFyjHyI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-lZweja3YmC8TacS3gPnPPELke49GErURdlU5bWuyBY8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -304,8 +304,9 @@ function poidsStats(){
   const a = avg7(L,last.d), b = avg7(L,addDays(last.d,-7));
   return { last, avg:a, prevAvg:b, delta: a!=null&&b!=null ? a-b : null, pct: a!=null&&b ? (a-b)/b*100 : null, list:L };
 }
-function allFoods(){ const d = S.app.diet; return Object.assign({}, (d && d.aliments) || {}, S.aliments || {}); }
-function food(id){ return allFoods()[id]; }
+function allFoods(){ const d = S.app.diet; const F = Object.assign({}, (d && d.aliments) || {}, S.aliments || {}); Object.keys(F).forEach(k=>{ if (F[k] && F[k].masque) delete F[k]; }); return F; }
+function foodAny(id){ const d = S.app.diet; return ((d && d.aliments) || {})[id] || (S.aliments||{})[id]; }
+function food(id){ return foodAny(id); }
 function tplDay(type){ const D = S.app.diet; return D && D.jours && D.jours[type]; }
 function journalDraft(d, type){ const t = tplDay(type) || {repas:[]};
   return {date:d, type, repas:(t.repas||[]).map((r,i)=>({id:"t"+i, heure:r.heure||"", nom:r.nom, note:r.note||"", items:(r.items||[]).map(x=>({a:x.a, q:x.q, etat:x.etat||""})), fait:false}))}; }
@@ -1661,7 +1662,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027134320";
+const APP_VERSION = "20261027135210";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
