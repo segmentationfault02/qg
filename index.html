@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-JJ1D27lQApCogsusn5PF33d1ioi3p4jxnTFDJbTw3vE='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-gUgnZZ3L4CcRe1T3RMfpE3oSfEg3qahi/gyBOWYQMBY='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -312,7 +312,11 @@ function journalDraft(d, type){ const t = tplDay(type) || {repas:[]};
   return {date:d, type, repas:(t.repas||[]).map((r,i)=>({id:"t"+i, heure:r.heure||"", nom:r.nom, note:r.note||"", items:(r.items||[]).map(x=>({a:x.a, q:x.q, etat:x.etat||""})), fait:false}))}; }
 function journalOf(d){ return S.journal[d] ? JSON.parse(JSON.stringify(S.journal[d])) : journalDraft(d, dayType(d)); }
 function journalStats(j){ const all = (j.repas||[]); const eaten = all.filter(r=>r.fait);
-  return { mange: eaten.map(mealMacros).reduce(addM,ZERO), prevu: all.map(mealMacros).reduce(addM,ZERO), tpl: dayMacros(tplDay(j.type)), nbFait: eaten.length, nb: all.length }; }
+  const T = (tplDay(j.type)||{}).repas || [];
+  const baseMange = eaten.map(r=>{ const m = /^t(\d+)$/.exec(r.id||""); return m && T[+m[1]] ? mealMacros(T[+m[1]]) : ZERO; }).reduce(addM,ZERO);
+  const mange = eaten.map(mealMacros).reduce(addM,ZERO);
+  const ecart = {kcal:mange.kcal-baseMange.kcal, p:mange.p-baseMange.p, g:mange.g-baseMange.g, l:mange.l-baseMange.l};
+  return { mange, prevu: all.map(mealMacros).reduce(addM,ZERO), tpl: dayMacros(tplDay(j.type)), ecart, nbFait: eaten.length, nb: all.length }; }
 const sortRepas = L => L.sort((a,b)=>(a.heure||"99:99")<(b.heure||"99:99")?-1:(a.heure||"99:99")>(b.heure||"99:99")?1:0);
 async function saveJournal(d, j){ const o = {...j, date:d, maj:new Date().toISOString()}; delete o.id; await put("journal/"+d, o); }
 function itemMacros(it){
@@ -442,7 +446,7 @@ VIEWS.accueil = { title:"QG", body(){
   // Diet
   h += '<section class="card tap" data-act="go" data-v="diet" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Diet du jour</span><span class="chip acc">'+(dt==="training"?"Training":"Off")+'</span></div>';
   const jt = S.journal[t]; const js = jt ? journalStats(jt) : null;
-  if (js) h += '<div class="spread"><div><span class="mid num">'+Math.round(js.mange.kcal)+'</span><span class="muted"> / '+Math.round(js.tpl.kcal)+' kcal</span>'+ecartTxt(js.prevu.kcal-js.tpl.kcal,"kcal")+'</div><span class="small muted">'+js.nbFait+'/'+js.nb+' repas</span></div><div class="bar"><i style="width:'+Math.min(100,js.tpl.kcal?js.mange.kcal/js.tpl.kcal*100:0)+'%"></i></div>';
+  if (js) h += '<div class="spread"><div><span class="mid num">'+Math.round(js.mange.kcal)+'</span><span class="muted"> / '+Math.round(js.tpl.kcal)+' kcal</span>'+ecartTxt(js.ecart.kcal,"kcal")+'</div><span class="small muted">'+js.nbFait+'/'+js.nb+' repas</span></div><div class="bar"><i style="width:'+Math.min(100,js.tpl.kcal?js.mange.kcal/js.tpl.kcal*100:0)+'%"></i></div>';
   else h += S.app.diet ? '<div class="spread"><div class="mid num">'+Math.round(dm.kcal)+' kcal</div><div class="macros"><span><b class="num">'+Math.round(dm.p)+'</b> P</span><span><b class="num">'+Math.round(dm.g)+'</b> G</span><span><b class="num">'+Math.round(dm.l)+'</b> L</span></div></div>' : '<div class="muted">…</div>';
   h += '</section>';
 
@@ -671,10 +675,10 @@ function journalView(){
   const d = S.ui.jourDiet, saved = !!S.journal[d], j = journalOf(d), st = journalStats(j);
   let h = '<div class="spread"><button class="icon-btn" data-act="jDay" data-n="-1" aria-label="Jour précédent">‹</button><h2 class="h2 cap">'+(d===today()?"Aujourd\'hui":fDay(d))+'</h2><button class="icon-btn" data-act="jDay" data-n="1" aria-label="Jour suivant">›</button></div>';
   h += '<section class="card"><div class="card-h"><span class="eyebrow">'+(saved?"Journal du jour":"Pas encore commencé · basé sur la template")+'</span></div>'+seg("jType", j.type, [["training","Jour training"],["off","Jour off"]]);
-  const B = st.tpl, E = {kcal:st.prevu.kcal-B.kcal, p:st.prevu.p-B.p, g:st.prevu.g-B.g, l:st.prevu.l-B.l};
+  const B = st.tpl, E = st.ecart;
   h += '<div class="spread"><div><span class="big num">'+Math.round(st.mange.kcal)+'</span><span class="muted"> / '+Math.round(B.kcal)+' kcal</span>'+ecartTxt(E.kcal,"kcal")+'</div><span class="chip '+(st.nbFait===st.nb&&st.nb?"good":"acc")+'">'+st.nbFait+'/'+st.nb+' repas</span></div>';
   h += macroBar("Protéines", st.mange.p, B.p, "g", E.p)+macroBar("Glucides", st.mange.g, B.g, "g", E.g)+macroBar("Lipides", st.mange.l, B.l, "g", E.l);
-  h += '<div class="hint">Objectif = ta diet de base ('+(j.type==="training"?"training":"off")+'). Entre parenthèses : l\'écart de ta journée (repas modifiés, ajoutés ou retirés) par rapport à la base.</div>';
+  h += '<div class="hint">Objectif = ta diet de base ('+(j.type==="training"?"training":"off")+'). Entre parenthèses : l\'écart sur les repas déjà cochés, comparés aux mêmes repas de la base. Un repas ajouté compte en entier.</div>';
   h += '</section><section class="card">';
   h += (j.repas||[]).map((r,i)=>{ const mm = mealMacros(r);
     return '<div class="meal'+(r.fait?' done':'')+'"><div class="row" style="align-items:flex-start">'+chk(r.fait,"jFait",'data-i="'+i+'"')+
@@ -1727,7 +1731,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027164109";
+const APP_VERSION = "20261027164532";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
