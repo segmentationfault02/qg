@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-NWFGToIeTUfXP5beZPZpZZAS7MaPaVTXsHtd96M6DRA='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-45rB6ja3acsGPXe/3bRwrPDe6HtK979u5cwbe5hcPN8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1113,9 +1113,12 @@ const AR = {
   butini:{ref:"ch:1:sloid:92795",nom:"Genève, Butini"}, queue:{ref:"ch:1:sloid:92891",nom:"Genève, Queue-d'Arve"},
   bac:{ref:"ch:1:sloid:92978",nom:"Petit-Lancy, Chemin du Bac"}, renens:{ref:"8501118",nom:"Renens VD"},
   avril:{ref:"ch:1:sloid:88839",nom:"Renens VD, 14 Avril"}, croisee:{ref:"ch:1:sloid:92223",nom:"Renens VD, Croisée/Tilleuls"},
-  unimail:{ref:"ch:1:sloid:92915",nom:"Genève, Uni-Mail"}
+  unimail:{ref:"ch:1:sloid:92915",nom:"Genève, Uni-Mail"},
+  bouchet:{ref:"ch:1:sloid:92791",nom:"Vernier, Bouchet"}, balexert:{ref:"ch:1:sloid:93141",nom:"Vernier, Balexert"},
+  avanchets:{ref:"ch:1:sloid:93139",nom:"Vernier, Avanchets-Etang"}, blandonnet:{ref:"ch:1:sloid:87924",nom:"Vernier, Blandonnet"},
+  aeroport:{ref:"8501026",nom:"Genève-Aéroport"}
 };
-const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, durees:{pull:83, legs:82, push:96, lower:71, upper:101} };
+const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, chien:30, trottServetteBouchet:5, trottSalleMere:20, trottMereAeroport:8, durees:{pull:83, legs:82, push:96, lower:71, upper:101} };
 const agCfg = () => Object.assign({}, AGD, (S.app.agenda||{}), {durees:Object.assign({}, AGD.durees, (S.app.agenda||{}).durees||{})});
 const toMin = h => { const m = /^(\d{1,2}):(\d{2})/.exec(h||""); return m ? +m[1]*60 + +m[2] : null; };
 const fromMin = m => { m = Math.max(0, Math.min(24*60-1, Math.round(m))); return pad(Math.floor(m/60))+":"+pad(m%60); };
@@ -1123,10 +1126,11 @@ const hfr = h => h ? h.replace(":", "h") : "";
 const isoMinLocal = iso => { const d = new Date(iso); return d.getHours()*60 + d.getMinutes(); };
 const isoAt = (dateS, min) => { const [y,m,d] = dateS.split("-").map(Number); return new Date(y, m-1, d, 0, Math.round(min)).toISOString(); };
 const nowHM = () => { const d = new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); };
-const shortStop = n => String(n||"").replace(/^Genève, /,"").replace(/^Renens VD, /,"").replace(/^Petit-Lancy, /,"").replace(/^gare /,"");
+const shortStop = n => String(n||"").replace(/^Genève, /,"").replace(/^Vernier, /,"").replace(/^Renens VD, /,"").replace(/^Petit-Lancy, /,"").replace(/^gare /,"");
 S.durees = null; S.agUi = {shift:false};
 
 function legTxt(l){
+  if (l.type==="trott") return "Trottinette · "+shortStop(l.de)+" "+hfr(hhmm(l.dep))+" → "+shortStop(l.vers)+" "+hfr(hhmm(l.arr));
   if (l.type!=="pt") return l.minutes>=3 ? "Marche "+l.minutes+" min" : "";
   const lab = l.mode==="tram" ? "Tram "+l.ligne : l.mode==="bus" ? "Bus "+l.ligne : (l.ligne||l.cat);
   const dd = delayMin(l.dep), da = delayMin(l.arr);
@@ -1148,6 +1152,27 @@ async function trajetOptions(depuis, vers, mode, dateS, min, cache){
   const r = await api({action:"trajet", from:depuis, to:vers, time:iso, arrive:mode==="arriver", n:6});
   const o = pickOptions(r.trajets||[], mode, iso); if (cache) cache[k] = o; return o;
 }
+// Trajet en plusieurs tronçons (ex. trottinette puis bus 22). Chaque chaîne = un itinéraire possible.
+async function chainOptions(chaines, dateS, min, cache){
+  const out = [];
+  for (const chain of chaines){
+    const hasPt = chain.some(sg=>!sg.trott);
+    for (const variant of (hasPt ? [0,1] : [0])){
+      let t = min, legs = [], depart = null, arrivee = null, ok = true, first = true;
+      for (let k=0; k<chain.length; k++){ const sg = chain[k];
+        if (sg.trott){ const dep = isoAt(dateS, t), arr = isoAt(dateS, t+sg.trott);
+          legs.push({type:"trott", minutes:sg.trott, de:sg.de.nom, vers:sg.a.nom, dep, arr}); depart = depart||dep; arrivee = arr; t += sg.trott; continue; }
+        const opts = await trajetOptions(sg.de, sg.a, "partir", dateS, t, cache); const idx = first ? variant : 0; first = false;
+        if (!opts.length || idx>=opts.length){ ok = false; break; }
+        const o = opts[idx]; legs.push(...o.legs); depart = depart||o.depart; arrivee = o.arrivee;
+        t = isoMinLocal(o.arrivee) + (chain[k+1] && !chain[k+1].trott ? 2 : 0); }
+      if (ok && legs.length) out.push({depart, arrivee, minutes:Math.round((new Date(arrivee)-new Date(depart))/60000), changements:Math.max(0, legs.filter(l=>l.type!=="marche").length-1), legs});
+    }
+  }
+  const seen = {}; return out.filter(o=>{ const k = o.depart+o.arrivee+o.legs.map(l=>l.ligne||l.type).join(); if (seen[k]) return false; seen[k] = 1; return true; })
+    .sort((a,b)=>a.arrivee<b.arrivee?-1:1).slice(0,3);
+}
+const tjOptions = (tj, dateS, min, cache) => tj.chaines ? chainOptions(tj.chaines, dateS, min, cache||{}) : trajetOptions(tj.depuis, tj.vers, tj.mode, dateS, min, cache||{});
 const optSel = tj => tj && tj.options && tj.options[tj.choisi||0];
 const arrMinOf = tj => optSel(tj) ? isoMinLocal(optSel(tj).arrivee) : null;
 const depMinOf = tj => optSel(tj) ? isoMinLocal(optSel(tj).depart) : null;
@@ -1162,9 +1187,10 @@ function dayDoc(d){
 }
 const sortT = L => L.sort((a,b)=>(a.debut||"99:99")<(b.debut||"99:99")?-1:(a.debut||"99:99")>(b.debut||"99:99")?1:0);
 async function saveDay(doc){ const o = JSON.parse(JSON.stringify(doc)); delete o.id; delete o.items; sortT(o.taches); await put("agenda/"+o.date, o); }
-function sousTitre(seance, salle, lieu){
+function sousTitre(seance, salle, lieu, chien){
   const p = [];
   if (seance && seance!=="repos") p.push(seance+" à "+(salle==="sunset"?"Sunset":"American"));
+  if (chien) p.push("chien chez ma mère");
   if (lieu==="Renens"||lieu==="Uni-Mail") p.push("école à "+lieu); else if (lieu==="Maison") p.push("école à la maison");
   return p.join(", ");
 }
@@ -1243,7 +1269,7 @@ function prepInit(){
   const wk = weekDoc(mondayOf(d)).jours[String((dow(d)+6)%7)] || {};
   const lieu = wk.lieu && wk.lieu!=="Pas d'école" ? wk.lieu : (wk.lieu==="Pas d'école" ? "Pas d'école" : "Renens");
   S.prep = { date:d, step:1, seance:nom, jyvais:nom!=="repos", objectifs:(wk.objectifs||[]).filter(o=>!o.fait),
-    reveil:c.reveil, ez:"rien", ezHeure:"08:30", salle:(S.app.agenda||{}).derniereSalle==="american"?"sunset":"american", lieu, autres:[],
+    reveil:c.reveil, ez:"rien", ezHeure:"08:30", chien:false, trott:true, salle:(S.app.agenda||{}).derniereSalle==="american"?"sunset":"american", lieu, autres:[],
     cache:{}, choix:{}, taches:null, building:false, err:null, shift:0 };
   loadDurees();
 }
@@ -1262,7 +1288,9 @@ VIEWS.prep = { title:"Préparer demain", body(){
     h += '<section class="card"><div class="field"><label for="pr-reveil">Réveil</label><input class="inp num" type="time" id="pr-reveil" value="'+esc(P.reveil)+'"></div>'+
       '<span class="eyebrow">Ezekiel</span>'+seg("prepSet", P.ez, [["rien","Rien"],["depose","Dépose"],["recup","Récup"]], ' data-f="ez"')+
       (P.ez!=="rien"?'<div class="field"><label for="pr-ez">Heure de '+(P.ez==="depose"?"dépose":"récupération")+'</label><input class="inp num" type="time" id="pr-ez" value="'+esc(P.ezHeure)+'"></div>':'')+
-      (P.jyvais && P.seance!=="repos"?'<span class="eyebrow">Salle</span>'+seg("prepSet", P.salle, [["american","American"],["sunset","Sunset"]], ' data-f="salle"'):'')+
+      '<span class="eyebrow">Chien chez ma mère</span>'+seg("prepSet", P.chien?"oui":"non", [["non","Non"],["oui","Oui"]], ' data-f="chien"')+
+      (P.chien?'<span class="eyebrow">Déplacements (selon la météo)</span>'+seg("prepSet", P.trott?"trott":"tc", [["trott","Trottinette"],["tc","Transports"]], ' data-f="trott"'):'')+
+      (P.jyvais && P.seance!=="repos"?'<span class="eyebrow">Salle</span>'+(P.chien?'<div class="small">Sunset (toujours avec le chien)</div>':seg("prepSet", P.salle, [["american","American"],["sunset","Sunset"]], ' data-f="salle"')):'')+
       '<span class="eyebrow">École</span>'+seg("prepSet", P.lieu, [["Renens","Renens"],["Uni-Mail","Uni-Mail"],["Maison","Maison"],["Pas d'école","Aucune"]], ' data-f="lieu"')+
       '<span class="eyebrow">Autre chose</span>'+(P.autres.length?'<div class="small">'+P.autres.map((a,i)=>hfr(a.heure)+' '+esc(a.titre)+' <button class="btn sm ghost" data-act="prepDelAutre" data-i="'+i+'">Retirer</button>').join("<br>")+'</div>':'')+
       '<div class="row" style="gap:8px"><input class="inp num" type="time" id="pr-ah" style="width:112px" aria-label="Heure"><input class="inp grow" id="pr-at" placeholder="Rendez-vous, tâche…" aria-label="Titre"><button class="btn" data-act="prepAddAutre">+</button></div></section>';
@@ -1279,7 +1307,7 @@ VIEWS.prep = { title:"Préparer demain", body(){
     }
   }
   if (P.step===4 && P.taches){
-    h += '<section class="card"><div><b class="cap">'+fDay(P.date)+'</b><div class="small muted">'+esc(sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu))+'</div></div><div class="list">'+sortT(P.taches.slice()).map((t,i)=>tacheHtml(P.date, t, i, {static:true})).join("")+'</div></section>';
+    h += '<section class="card"><div><b class="cap">'+fDay(P.date)+'</b><div class="small muted">'+esc(sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu, P.chien))+'</div></div><div class="list">'+sortT(P.taches.slice()).map((t,i)=>tacheHtml(P.date, t, i, {static:true})).join("")+'</div></section>';
     h += '<span class="eyebrow">Décaler tout</span><div class="row wrap-r" style="gap:6px">'+[-30,-15,15,30,60].map(n=>'<button class="btn sm" data-act="prepShift" data-n="'+n+'">'+(n>0?"+":"")+(Math.abs(n)>=60?(n/60)+" h":n+" min")+'</button>').join("")+'</div>';
   }
   h += '<div class="row" style="gap:8px">'+(P.step>1?'<button class="btn" data-act="prepNav" data-n="-1">Retour</button>':'')+
@@ -1292,23 +1320,42 @@ async function prepBuild(){
   const P = S.prep, c = agCfg(), d = P.date; P.building = true; P.err = null; render();
   try {
     const taches = [], mk = o => ({id:uid(), fait:false, faitA:null, trajets:[], ...o});
-    const opt = async (key,label,depuis,vers,mode,min) => { const options = await trajetOptions(depuis,vers,mode,d,min,P.cache);
-      return {key,label,depuis,vers,mode,heureCible:fromMin(min),options,choisi:Math.min(P.choix[key]||0, Math.max(0,options.length-1))}; };
+    const opt = async (key,label,depuis,vers,mode,min,chaines) => { const tj0 = {depuis,vers,mode,chaines:chaines||null}; const options = await tjOptions(tj0,d,min,P.cache);
+      const o = {key,label,depuis,vers,mode,heureCible:fromMin(min),options,choisi:Math.min(P.choix[key]||0, Math.max(0,options.length-1))}; if (chaines) o.chaines = chaines; return o; };
+    const chien = !!P.chien, trott = !!P.trott;
+    if (chien) P.salle = "sunset";
     const go = P.jyvais && P.seance!=="repos", salleStop = P.salle==="sunset"?AR.bac:AR.queue, salleNom = P.salle==="sunset"?"Sunset":"American";
     let after = null, tCur = toMin(P.reveil)+c.prepSalle, pos = AR.poterie;
     if (P.ez==="depose"){ const H = toMin(P.ezHeure); const t1 = mk({type:"depose", debut:fromMin(H), titre:"Dépose Ezekiel"});
       t1.trajets.push(await opt("depose","",AR.poterie,AR.butini,"arriver",H)); taches.push(t1); after = {stop:AR.butini, min:H+5, tache:t1}; tCur = H+5; }
     if (go){
-      const tj = after ? await opt("salle","",after.stop,salleStop,"partir",after.min) : await opt("salle","",AR.poterie,salleStop,"partir",tCur);
+      const tj = after ? await opt("salle","",after.stop,salleStop,"partir",after.min)
+        : chien ? (trott ? await opt("salle","",AR.servette,salleStop,"partir",tCur,[[{trott:c.trottServetteBouchet,de:AR.servette,a:AR.bouchet},{de:AR.bouchet,a:AR.bac}]])
+                         : await opt("salle","",AR.poterie,salleStop,"partir",tCur,[[{de:AR.poterie,a:AR.bouchet},{de:AR.bouchet,a:AR.bac}]]))
+        : await opt("salle","",AR.poterie,salleStop,"partir",tCur);
       const arr = arrMinOf(tj) ?? tCur+25, deb = arr+5, dur = dureeSeance(P.seance), fin = deb+dur;
       const ts = mk({type:"seance", debut:fromMin(deb), fin:fromMin(fin), titre:"Séance "+P.seance+" à "+salleNom, seance:{type:P.seance, salle:P.salle, duree:dur}});
       if (after) after.tache.trajets.push(tj); else ts.trajets.push(tj);
-      const ret = await opt("retour","Retour",salleStop,AR.servette,"partir",fin+c.sortie); ts.trajets.push(ret); taches.push(ts);
-      tCur = (arrMinOf(ret) ?? fin+c.sortie+25) + 5;
+      const ret = chien
+        ? (trott ? await opt("retour","Retour",AR.bac,AR.balexert,"partir",fin+c.sortie,[[{trott:c.trottSalleMere,de:AR.bac,a:AR.balexert}]])
+                 : await opt("retour","Retour",AR.bac,AR.balexert,"partir",fin+c.sortie,[[{de:AR.bac,a:AR.blandonnet},{de:AR.blandonnet,a:AR.avanchets}],[{de:AR.bac,a:AR.bouchet},{de:AR.bouchet,a:AR.balexert}]]))
+        : await opt("retour","Retour",salleStop,AR.servette,"partir",fin+c.sortie);
+      ts.trajets.push(ret); taches.push(ts);
+      tCur = (arrMinOf(ret) ?? fin+c.sortie+25) + (chien ? 3 : 5);
+      if (chien){ taches.push(mk({type:"chien", debut:fromMin(tCur), fin:fromMin(tCur+c.chien), titre:"Sortir le chien"})); tCur += c.chien + 5; pos = AR.balexert; }
       taches.push(mk({type:"repas", debut:fromMin(tCur), fin:fromMin(tCur+c.repas), titre:"Repas et douche"})); tCur += c.repas;
+    } else if (chien){
+      const tj = trott ? await opt("chien","",AR.servette,AR.balexert,"partir",tCur,[[{trott:c.trottServetteBouchet,de:AR.servette,a:AR.bouchet},{de:AR.bouchet,a:AR.balexert}]])
+                       : await opt("chien","",AR.poterie,AR.balexert,"partir",tCur);
+      const a = arrMinOf(tj) ?? tCur+25; taches.push(mk({type:"chien", debut:fromMin(a+3), fin:fromMin(a+3+c.chien), titre:"Sortir le chien", trajets:[tj]}));
+      tCur = a+3+c.chien+5; pos = AR.balexert;
+      taches.push(mk({type:"repas", debut:"12:00", fin:fromMin(12*60+c.repas), titre:"Repas et douche"}));
     } else { taches.push(mk({type:"repas", debut:"12:00", fin:fromMin(12*60+c.repas), titre:"Repas et douche"})); }
     if (P.lieu==="Renens" || P.lieu==="Uni-Mail"){ const dest = P.lieu==="Renens"?AR.croisee:AR.unimail;
-      const tj = await opt("ecole","",AR.poterie,dest,"partir",tCur); const a = arrMinOf(tj) ?? tCur+50;
+      const tj = !chien ? await opt("ecole","",AR.poterie,dest,"partir",tCur)
+        : trott ? await opt("ecole","",AR.balexert,dest,"partir",tCur,[[{trott:c.trottMereAeroport,de:AR.balexert,a:AR.aeroport},{de:AR.aeroport,a:dest}]])
+        : await opt("ecole","",AR.balexert,dest,"partir",tCur);
+      const a = arrMinOf(tj) ?? tCur+50;
       taches.push(mk({type:"ecole", debut:fromMin(a+3), titre:"École "+P.lieu, note:P.objectifs.map(o=>o.texte).join(" · "), trajets:[tj]})); pos = dest; }
     else if (P.lieu==="Maison") taches.push(mk({type:"ecole", debut:fromMin(tCur), titre:"École à la maison", note:P.objectifs.map(o=>o.texte).join(" · ")}));
     if (P.ez==="recup"){ const H = toMin(P.ezHeure); const t2 = mk({type:"recup", debut:fromMin(H), titre:"Récupérer Ezekiel"});
@@ -1321,7 +1368,7 @@ async function prepBuild(){
 }
 async function retimeTrajet(dateS, tj, deltaMin, cache){
   const m = toMin(tj.heureCible); if (m==null) return tj;
-  const nm = m + deltaMin; const options = await trajetOptions(tj.depuis, tj.vers, tj.mode, dateS, nm, cache||{});
+  const nm = m + deltaMin; const options = await tjOptions(tj, dateS, nm, cache||{});
   return {...tj, heureCible:fromMin(nm), options, choisi:0};
 }
 async function shiftTaches(dateS, taches, n, cache){
@@ -1334,7 +1381,7 @@ async function shiftTaches(dateS, taches, n, cache){
 SHEETS.tache = { html(ds){ const doc = dayDoc(ds.d), t0 = doc.taches[+ds.i] || {}, t = {...t0, trajets: S.sheet.tkTrajets || t0.trajets || []};
   return '<h2 class="h2">'+esc(t.titre||"Tâche")+'</h2><div class="grid2">'+fld("tk-debut","Début",t.debut,'type="time"')+fld("tk-fin","Fin",t.fin||"",'type="time"')+'</div>'+fld("tk-titre","Titre",t.titre,"")+
     (t.trajets||[]).map((tj,j)=>'<div class="card" style="background:var(--surface2);gap:6px"><span class="eyebrow">'+esc(tj.label||"Trajet")+' · '+esc(shortStop(tj.depuis&&tj.depuis.nom))+' → '+esc(shortStop(tj.vers&&tj.vers.nom))+'</span>'+
-      (tj.options||[]).map((o,oi)=>'<button type="button" class="btn sm" style="justify-content:flex-start;text-align:left;'+(oi===(tj.choisi||0)?'border-color:var(--accent);background:var(--accent-soft)':'')+'" data-act="tkPick" data-j="'+j+'" data-i="'+oi+'">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+' · '+esc(o.legs.filter(l=>l.type==="pt").map(l=>l.ligne).join(", "))+'</button>').join("")+
+      (tj.options||[]).map((o,oi)=>'<button type="button" class="btn sm" style="justify-content:flex-start;text-align:left;'+(oi===(tj.choisi||0)?'border-color:var(--accent);background:var(--accent-soft)':'')+'" data-act="tkPick" data-j="'+j+'" data-i="'+oi+'">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+' · '+esc(o.legs.filter(l=>l.type==="pt"||l.type==="trott").map(l=>l.type==="trott"?"Trottinette":l.ligne).join(", "))+'</button>').join("")+
       '<button type="button" class="btn sm ghost" data-act="tkRefresh" data-j="'+j+'">Actualiser les horaires</button></div>').join("")+
     (t.trajetTexte?'<div class="trajet">'+esc(t.trajetTexte)+'</div>':'')+
     '<button type="button" class="btn sm" data-act="tkTrajet">'+((t.trajets||[]).length?"Ajouter un autre trajet":"Ajouter un trajet")+'</button>'+sheetBtns(true); },
@@ -1360,19 +1407,19 @@ Object.assign(ACT, {
   async seanceStart(d){ const doc = JSON.parse(JSON.stringify(dayDoc(d.d))), t = doc.taches[+d.i], c = agCfg(); if (!t) return;
     const now = nowHM(), dur = (t.seance&&t.seance.duree) || dureeSeance((t.seance||{}).type); t.seance = {...(t.seance||{}), debutReel:now, duree:dur};
     t.debut = now; t.fin = fromMin(toMin(now)+dur); toast("Séance commencée, calcul du retour…");
-    try { const j = (t.trajets||[]).findIndex(x=>x.label==="Retour"); if (j>=0){ const tj = t.trajets[j]; const options = await trajetOptions(tj.depuis, tj.vers, "partir", d.d, toMin(t.fin)+c.sortie, {}); t.trajets[j] = {...tj, heureCible:fromMin(toMin(t.fin)+c.sortie), options, choisi:0}; }
+    try { const j = (t.trajets||[]).findIndex(x=>x.label==="Retour"); if (j>=0){ const tj = t.trajets[j]; const options = await tjOptions(tj, d.d, toMin(t.fin)+c.sortie, {}); t.trajets[j] = {...tj, heureCible:fromMin(toMin(t.fin)+c.sortie), options, choisi:0}; }
       await saveDay(doc); toast("Fin estimée à "+hfr(t.fin)); } catch(e){ await saveDay(doc).catch(()=>{}); toast(errMsg(e), true); } },
   async seanceFin(d){ const doc = JSON.parse(JSON.stringify(dayDoc(d.d))), t = doc.taches[+d.i], c = agCfg(); if (!t) return;
     const now = nowHM(); t.seance = {...(t.seance||{}), finReelle:now}; t.fin = now; t.fait = true; t.faitA = now;
     const minutes = toMin(now) - toMin(t.seance.debutReel||t.debut);
     try { if (minutes>10) await put("seances/"+uid(), {date:d.d, type:t.seance.type, debut:t.seance.debutReel, fin:now, minutes, source:"app"}); } catch(e){}
-    try { const j = (t.trajets||[]).findIndex(x=>x.label==="Retour"); if (j>=0){ const tj = t.trajets[j]; const options = await trajetOptions(tj.depuis, tj.vers, "partir", d.d, toMin(now)+c.sortie, {}); t.trajets[j] = {...tj, heureCible:fromMin(toMin(now)+c.sortie), options, choisi:0}; }
+    try { const j = (t.trajets||[]).findIndex(x=>x.label==="Retour"); if (j>=0){ const tj = t.trajets[j]; const options = await tjOptions(tj, d.d, toMin(now)+c.sortie, {}); t.trajets[j] = {...tj, heureCible:fromMin(toMin(now)+c.sortie), options, choisi:0}; }
       await saveDay(doc); toast("Séance terminée ("+minutes+" min)"); } catch(e){ await saveDay(doc).catch(()=>{}); toast(errMsg(e), true); } },
   tkPick(d){ const doc = dayDoc(S.sheet.ds.d), t = doc.taches[+S.sheet.ds.i]; S.sheet.tkTrajets = S.sheet.tkTrajets || JSON.parse(JSON.stringify(t.trajets||[]));
     S.sheet.tkTrajets[+d.j].choisi = +d.i; keepTk(); renderSheet(); },
   async tkRefresh(d){ const doc = dayDoc(S.sheet.ds.d), t = doc.taches[+S.sheet.ds.i]; S.sheet.tkTrajets = S.sheet.tkTrajets || JSON.parse(JSON.stringify(t.trajets||[]));
     const tj = S.sheet.tkTrajets[+d.j]; toast("Actualisation…");
-    try { const options = await trajetOptions(tj.depuis, tj.vers, tj.mode, S.sheet.ds.d, toMin(tj.heureCible), {}); S.sheet.tkTrajets[+d.j] = {...tj, options, choisi:0}; keepTk(); renderSheet(); toast("Horaires à jour"); } catch(e){ toast(errMsg(e), true); } },
+    try { const options = await tjOptions(tj, S.sheet.ds.d, toMin(tj.heureCible), {}); S.sheet.tkTrajets[+d.j] = {...tj, options, choisi:0}; keepTk(); renderSheet(); toast("Horaires à jour"); } catch(e){ toast(errMsg(e), true); } },
   tkTrajet(){ const ds = S.sheet.ds, doc = dayDoc(ds.d), t = doc.taches[+ds.i]; openSheet("trajet", {d:ds.d, i:ds.i, heure:t.debut}); },
   prepStart(){ prepInit(); S.view = "prep"; renderKeepScroll=false; window.scrollTo(0,0); render(); },
   prepQuit(){ S.prep = null; S.view = "agenda"; render(); },
@@ -1387,14 +1434,14 @@ Object.assign(ACT, {
   async prepShift(d){ const P = S.prep; toast("Décalage…"); try { await shiftTaches(P.date, P.taches, +d.n, P.cache); render(); } catch(e){ toast(errMsg(e), true); } },
   async prepSave(){ const P = S.prep; if (!P || !P.taches) return;
     const old = dayDoc(P.date); const libres = (old.taches||[]).filter(x=>x.type==="libre" && !P.taches.some(y=>y.titre===x.titre && y.debut===x.debut));
-    const doc = {date:P.date, statut:"valide", sousTitre:sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu), reveil:P.reveil,
-      seance:{type:P.seance, jyvais:P.jyvais, salle:P.salle}, ecole:{lieu:P.lieu}, ezekiel:P.ez==="rien"?null:{action:P.ez, heure:P.ezHeure}, taches:P.taches.concat(libres)};
+    const doc = {date:P.date, statut:"valide", sousTitre:sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu, P.chien), reveil:P.reveil,
+      seance:{type:P.seance, jyvais:P.jyvais, salle:P.salle}, chien:P.chien?{trott:P.trott}:null, ecole:{lieu:P.lieu}, ezekiel:P.ez==="rien"?null:{action:P.ez, heure:P.ezHeure}, taches:P.taches.concat(libres)};
     try { await saveDay(doc); if (P.jyvais){ const cfg = {...(S.app.agenda||{})}; delete cfg.id; cfg.derniereSalle = P.salle; put("app/agenda", cfg).catch(()=>{}); }
       toast("Journée enregistrée"); S.ui.agendaDay = P.date; S.prep = null; S.view = "agenda"; render(); } catch(e){} }
 });
 // segments de l'assistant : data-f porté par chaque bouton
 ACT.prepSet = (d) => { const P = S.prep; prepReadInputs(); const f = d.f, k = d.k;
-  if (f==="jyvais") P.jyvais = k==="oui"; else if (f==="ez"){ P.ez = k; if (k==="recup" && P.ezHeure==="08:30") P.ezHeure = "16:30"; if (k==="depose" && P.ezHeure==="16:30") P.ezHeure = "08:30"; } else P[f] = k;
+  if (f==="jyvais") P.jyvais = k==="oui"; else if (f==="chien"){ P.chien = k==="oui"; if (P.chien) P.salle = "sunset"; } else if (f==="trott") P.trott = k==="trott"; else if (f==="ez"){ P.ez = k; if (k==="recup" && P.ezHeure==="08:30") P.ezHeure = "16:30"; if (k==="depose" && P.ezHeure==="16:30") P.ezHeure = "08:30"; } else P[f] = k;
   P.taches = null; render(); };
 function keepTk(){ const s = S.sheet; s.keepTk = {debut:val("tk-debut"), fin:val("tk-fin"), titre:val("tk-titre")}; }
 
@@ -1545,7 +1592,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261026190924";
+const APP_VERSION = "20261027095516";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
