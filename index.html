@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-lZweja3YmC8TacS3gPnPPELke49GErURdlU5bWuyBY8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-JJ1D27lQApCogsusn5PF33d1ioi3p4jxnTFDJbTw3vE='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -442,7 +442,7 @@ VIEWS.accueil = { title:"QG", body(){
   // Diet
   h += '<section class="card tap" data-act="go" data-v="diet" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Diet du jour</span><span class="chip acc">'+(dt==="training"?"Training":"Off")+'</span></div>';
   const jt = S.journal[t]; const js = jt ? journalStats(jt) : null;
-  if (js) h += '<div class="spread"><div><span class="mid num">'+Math.round(js.mange.kcal)+'</span><span class="muted"> / '+Math.round(js.prevu.kcal)+' kcal</span></div><span class="small muted">'+js.nbFait+'/'+js.nb+' repas</span></div><div class="bar"><i style="width:'+Math.min(100,js.prevu.kcal?js.mange.kcal/js.prevu.kcal*100:0)+'%"></i></div>';
+  if (js) h += '<div class="spread"><div><span class="mid num">'+Math.round(js.mange.kcal)+'</span><span class="muted"> / '+Math.round(js.tpl.kcal)+' kcal</span>'+ecartTxt(js.prevu.kcal-js.tpl.kcal,"kcal")+'</div><span class="small muted">'+js.nbFait+'/'+js.nb+' repas</span></div><div class="bar"><i style="width:'+Math.min(100,js.tpl.kcal?js.mange.kcal/js.tpl.kcal*100:0)+'%"></i></div>';
   else h += S.app.diet ? '<div class="spread"><div class="mid num">'+Math.round(dm.kcal)+' kcal</div><div class="macros"><span><b class="num">'+Math.round(dm.p)+'</b> P</span><span><b class="num">'+Math.round(dm.g)+'</b> G</span><span><b class="num">'+Math.round(dm.l)+'</b> L</span></div></div>' : '<div class="muted">…</div>';
   h += '</section>';
 
@@ -621,8 +621,9 @@ VIEWS.diet = { title:"Diet", body(){
   h += '<section class="card"><span class="eyebrow">Changements de la template</span>'+(L.length?'<div class="list">'+L.map(x=>'<div class="li" style="align-items:flex-start"><span class="chip">'+fShort(x.date)+'</span><span class="t grow small" style="font-weight:400">'+esc(x.texte)+'</span></div>').join("")+'</div>':'<div class="empty">Pas encore d\'historique.</div>')+'</section>';
   return h;
 }};
-function macroBar(label, v, max, unit){ const pct = max ? Math.min(100, v/max*100) : 0;
-  return '<div class="stack" style="gap:4px"><div class="spread small"><span>'+label+'</span><span class="num"><b>'+Math.round(v)+'</b> / '+Math.round(max)+' '+unit+'</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'; }
+const ecartTxt = (d, unit) => { d = Math.round(d); return d===0 ? "" : '<span class="'+(d>0?"up":"down")+'" style="font-weight:600"> ('+(d>0?"+":"")+d+' '+unit+')</span>'; };
+function macroBar(label, v, max, unit, diff){ const pct = max ? Math.min(100, v/max*100) : 0;
+  return '<div class="stack" style="gap:4px"><div class="spread small"><span>'+label+'</span><span class="num"><b>'+Math.round(v)+'</b> / '+Math.round(max)+' '+unit+(diff!=null?ecartTxt(diff, unit):"")+'</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'; }
 const BODY_SVG = '<svg viewBox="0 0 100 240" role="img"><g fill="var(--accent)" opacity=".38">'+
   '<ellipse cx="50" cy="17" rx="10.5" ry="12.5"/><rect x="45" y="27" width="10" height="9" rx="3"/>'+
   '<path d="M29 38 Q50 33 71 38 Q79 41 80 48 Q81 64 70 86 Q66 96 66 108 L34 108 Q34 96 30 86 Q19 64 20 48 Q21 41 29 38 Z"/>'+
@@ -670,10 +671,10 @@ function journalView(){
   const d = S.ui.jourDiet, saved = !!S.journal[d], j = journalOf(d), st = journalStats(j);
   let h = '<div class="spread"><button class="icon-btn" data-act="jDay" data-n="-1" aria-label="Jour précédent">‹</button><h2 class="h2 cap">'+(d===today()?"Aujourd\'hui":fDay(d))+'</h2><button class="icon-btn" data-act="jDay" data-n="1" aria-label="Jour suivant">›</button></div>';
   h += '<section class="card"><div class="card-h"><span class="eyebrow">'+(saved?"Journal du jour":"Pas encore commencé · basé sur la template")+'</span></div>'+seg("jType", j.type, [["training","Jour training"],["off","Jour off"]]);
-  h += '<div class="spread"><div><span class="big num">'+Math.round(st.mange.kcal)+'</span><span class="muted"> / '+Math.round(st.prevu.kcal)+' kcal</span></div><span class="chip '+(st.nbFait===st.nb&&st.nb?"good":"acc")+'">'+st.nbFait+'/'+st.nb+' repas</span></div>';
-  h += macroBar("Protéines", st.mange.p, st.prevu.p, "g")+macroBar("Glucides", st.mange.g, st.prevu.g, "g")+macroBar("Lipides", st.mange.l, st.prevu.l, "g");
-  const ecart = st.prevu.kcal - st.tpl.kcal;
-  if (Math.abs(ecart) >= 1) h += '<div class="small '+(ecart>0?"up":"down")+'">Prévu du jour vs template : '+(ecart>0?"+":"")+Math.round(ecart)+' kcal</div>';
+  const B = st.tpl, E = {kcal:st.prevu.kcal-B.kcal, p:st.prevu.p-B.p, g:st.prevu.g-B.g, l:st.prevu.l-B.l};
+  h += '<div class="spread"><div><span class="big num">'+Math.round(st.mange.kcal)+'</span><span class="muted"> / '+Math.round(B.kcal)+' kcal</span>'+ecartTxt(E.kcal,"kcal")+'</div><span class="chip '+(st.nbFait===st.nb&&st.nb?"good":"acc")+'">'+st.nbFait+'/'+st.nb+' repas</span></div>';
+  h += macroBar("Protéines", st.mange.p, B.p, "g", E.p)+macroBar("Glucides", st.mange.g, B.g, "g", E.g)+macroBar("Lipides", st.mange.l, B.l, "g", E.l);
+  h += '<div class="hint">Objectif = ta diet de base ('+(j.type==="training"?"training":"off")+'). Entre parenthèses : l\'écart de ta journée (repas modifiés, ajoutés ou retirés) par rapport à la base.</div>';
   h += '</section><section class="card">';
   h += (j.repas||[]).map((r,i)=>{ const mm = mealMacros(r);
     return '<div class="meal'+(r.fait?' done':'')+'"><div class="row" style="align-items:flex-start">'+chk(r.fait,"jFait",'data-i="'+i+'"')+
@@ -850,6 +851,39 @@ async function prepImage(file){
     const c = document.createElement("canvas"); c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
     const x = c.getContext("2d"); x.filter = "grayscale(1) contrast(1.4)"; x.drawImage(bmp, 0, 0, c.width, c.height);
     return await new Promise(r=>c.toBlob(b=>r(b||file), "image/png")); } catch(e){ return file; } }
+async function ocrWorker(onProgress){
+  if (!window.Tesseract) await loadScript("vendor/ocr/tesseract.min.js");
+  const base = new URL("vendor/ocr/", location.href).href;
+  return window.Tesseract.createWorker("eng", 1, { workerPath: base+"worker.min.js", corePath: base, langPath: base, workerBlobURL: false, gzip: true,
+    logger: m => { if (m.status==="recognizing text" && onProgress) onProgress(Math.round(m.progress*100)); } });
+}
+function parseEtiquette(text){
+  const lines = String(text||"").split(/\n+/).map(l=>normTxt(l).replace(/,/g,".").replace(/\s+/g," ").trim()).filter(Boolean);
+  const out = {}; const firstNum = l => { const m = l.match(/(\d+(?:\.\d+)?)/); return m ? +m[1] : null; };
+  const all = lines.join(" ");
+  const kc = all.match(/(\d{2,4}(?:\.\d)?)\s*k\s*ca[l1i]/); if (kc) out.kcal = +kc[1];
+  for (const l of lines){
+    if (/sucre|sugar|satur|dont |of which|fibre|fiber|sel |salt|sodium/.test(l)) continue;
+    const rest = l.replace(/^[^0-9]*/, "");
+    if (out.p==null && /prot/.test(l)) out.p = firstNum(rest);
+    else if (out.g==null && /glucid|carbohyd|hydrates de carbone|kohlenhyd/.test(l)) out.g = firstNum(rest);
+    else if (out.l==null && /lipid|matiere.? grasse|graisse|\bfat\b|\bfett\b/.test(l)) out.l = firstNum(rest);
+  }
+  if (out.kcal==null && out.p!=null && out.g!=null && out.l!=null) out.kcal = Math.round(out.p*4 + out.g*4 + out.l*9);
+  ["kcal","p","g","l"].forEach(k=>{ if (out[k]!=null && (out[k]<0 || out[k]>(k==="kcal"?950:100))) delete out[k]; });
+  return out;
+}
+async function lireEtiquette(file, input){
+  const st = document.getElementById("nf-ocr"); st.textContent = "Lecture de l'étiquette… (la première fois, quelques secondes)";
+  let worker = null;
+  try { worker = await ocrWorker(p=>{ st.textContent = "Lecture de l'étiquette… "+p+" %"; });
+    const r = await worker.recognize(await prepImage(file)); const v = parseEtiquette(r.data.text);
+    const map = {kcal:"nf-kcal", p:"nf-p", g:"nf-g", l:"nf-l"}; let n = 0;
+    Object.entries(map).forEach(([k,id])=>{ const e = document.getElementById(id); if (e && v[k]!=null){ e.value = String(v[k]); e.style.borderColor = "var(--good)"; n++; } });
+    st.innerHTML = n ? '<span class="down">'+n+' valeur'+(n>1?'s':'')+' sur 4 lue'+(n>1?'s':'')+'.</span> Vérifie-les, ajoute le nom et la quantité.' : '<span class="up">Aucune valeur reconnue. Prends le tableau de près, bien à plat et éclairé.</span>';
+  } catch(e){ st.innerHTML = '<span class="up">La lecture a échoué. Réessaie ou entre les valeurs à la main.</span>'; }
+  finally { if (worker) worker.terminate(); input.value = ""; }
+}
 async function ocrImage(file, onProgress){
   if (!window.Tesseract) await loadScript("vendor/ocr/tesseract.min.js");
   const base = new URL("vendor/ocr/", location.href).href;
@@ -937,22 +971,42 @@ function foodOptions(F, selId){
   return Object.entries(groups).filter(([,L])=>L.length).map(([g,L])=>'<optgroup label="'+g+'">'+
     L.sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr")).map(([id,a])=>'<option value="'+esc(id)+'"'+(id===selId?" selected":"")+'>'+esc(a.nom)+'</option>').join("")+'</optgroup>').join("");
 }
+const normTxt = t => String(t||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+function fpResults(){
+  const F = allFoods(), fp = S.sheet.fp || {}, q = normTxt(fp.q).trim(), mots = q.split(/\s+/).filter(Boolean);
+  let L = Object.entries(F).filter(([id,a])=>(!fp.cat || foodCat(a)===fp.cat) && mots.every(m=>normTxt(a.nom).includes(m)));
+  L.sort((x,y)=>{ const ax = normTxt(x[1].nom).startsWith(q)?0:1, ay = normTxt(y[1].nom).startsWith(q)?0:1; return ax-ay || String(x[1].nom).localeCompare(String(y[1].nom),"fr"); });
+  if (!L.length) return '<div class="small muted">Aucun aliment trouvé. Crée-le avec « Nouvel aliment ».</div>';
+  const groups = {}; L.slice(0,60).forEach(([id,a])=>{ (groups[foodCat(a)] = groups[foodCat(a)]||[]).push([id,a]); });
+  return ["Protéines","Glucides","Lipides"].filter(g=>groups[g]).map(g=>'<span class="eyebrow" style="margin-top:4px">'+g+'</span>'+groups[g].map(([id,a])=>
+    '<button type="button" class="btn sm ghost" style="justify-content:space-between;text-align:left;gap:8px" data-act="fpPick" data-id="'+esc(id)+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(a.nom)+'</span><span class="small muted num" style="white-space:nowrap">'+Math.round(a.kcal)+' kcal · P '+r1(a.p)+'</span></button>').join("")).join("");
+}
+function fpHtml(){ const fp = S.sheet.fp;
+  return '<div class="card" style="gap:8px;background:var(--surface2)"><div class="spread"><span class="eyebrow">'+(fp.k==="add"?"Ajouter un aliment":"Remplacer l\'aliment")+'</span><button type="button" class="btn sm ghost" data-act="fpClose">Annuler</button></div>'+
+    '<input class="inp" id="fp-q" placeholder="Rechercher : poulet, riz, skyr…" autocomplete="off" value="'+esc(fp.q||"")+'">'+
+    seg("fpCat", fp.cat||"", [["","Tous"],["Protéines","Protéines"],["Glucides","Glucides"],["Lipides","Lipides"]])+
+    '<div id="fp-res" class="stack" style="gap:4px;max-height:46vh;overflow-y:auto">'+fpResults()+'</div>'+
+    '<button type="button" class="btn sm" data-act="nfOpen">Nouvel aliment (avec photo de l\'étiquette)</button></div>'; }
+function nfHtml(){ const v = S.sheet.nfv || {};
+  return '<div class="card" style="gap:8px;background:var(--surface2)"><div class="spread"><span class="eyebrow">Nouvel aliment</span><button type="button" class="btn sm ghost" data-act="nfClose">Annuler</button></div>'+
+    '<label class="btn pri full" for="nf-photo" style="cursor:pointer">Prendre en photo les valeurs nutritionnelles</label><input type="file" id="nf-photo" accept="image/*" hidden><div id="nf-ocr" class="small muted"></div>'+
+    '<div class="grid2">'+fld("nf-nom","Nom",v.nom||"",'placeholder="Skyr nature Migros"')+'<div class="field"><label for="nf-unite">Unité</label><select class="inp" id="nf-unite"><option value="g">g</option><option value="ml"'+(v.unite==="ml"?" selected":"")+'>ml</option></select></div></div>'+
+    '<div class="hint">Valeurs pour 100 g (ou 100 ml), première colonne de l\'étiquette.</div><div class="grid4">'+fld("nf-kcal","Kcal",v.kcal??"",'inputmode="decimal"')+fld("nf-p","Prot.",v.p??"",'inputmode="decimal"')+fld("nf-g","Gluc.",v.g??"",'inputmode="decimal"')+fld("nf-l","Lip.",v.l??"",'inputmode="decimal"')+'</div>'+
+    '<div class="row" style="gap:8px"><input class="inp num" style="width:96px" id="nf-q" inputmode="decimal" placeholder="g" aria-label="Quantité"><button type="button" class="btn pri grow" data-act="nfSave">Créer et ajouter au repas</button></div></div>'; }
 function mealDraftItemsHtml(dr){
   const F = allFoods();
-  const rows = (dr.items||[]).map((it,k)=>{ const a = F[it.a]||{nom:it.a,unite:"g"}; const m = itemMacros(it);
-    return '<div class="stack" style="gap:6px;padding:8px 0;border-top:1px solid var(--line)"><select class="inp" id="ri-a-'+k+'" data-k="'+k+'" aria-label="Aliment">'+foodOptions(F, it.a)+(F[it.a]?'':'<option selected>'+esc(it.a)+'</option>')+'</select>'+
+  if (S.sheet.nf) return nfHtml();
+  if (S.sheet.fp) return fpHtml();
+  const rows = (dr.items||[]).map((it,k)=>{ const a = food(it.a)||{nom:it.a,unite:"g"}; const m = itemMacros(it);
+    return '<div class="stack" style="gap:6px;padding:8px 0;border-top:1px solid var(--line)"><button type="button" class="btn sm" style="justify-content:space-between;text-align:left" data-act="fpOpen" data-k="'+k+'"><span>'+esc(a.nom)+'</span><span class="small muted">changer</span></button>'+
       '<div class="row" style="gap:8px"><input class="inp num" style="width:96px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité"><span class="small muted">'+(a.unite||"g")+'</span><span class="grow small num muted" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:34px;height:34px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer cet aliment">×</button></div></div>'; }).join("");
-  const opts = foodOptions(F, S.sheet.addSel);
-  let add = '<div class="card" style="gap:8px;background:var(--surface2)"><span class="eyebrow">Ajouter un aliment</span><div class="row" style="gap:8px"><select class="inp grow" id="ri-add" style="min-width:0">'+opts+'<option value="__new"'+(S.sheet.addSel==="__new"?" selected":"")+'>Nouvel aliment…</option></select><input class="inp num" style="width:84px" id="ri-addq" inputmode="decimal" placeholder="g"></div>';
-  if (S.sheet.addSel==="__new") add += '<div class="hint">Macros pour 100 g (ou 100 ml), lues sur l\'étiquette.</div><div class="grid2">'+fld("nf-nom","Nom","",'placeholder="Skyr nature"')+'<div class="field"><label for="nf-unite">Unité</label><select class="inp" id="nf-unite"><option value="g">g</option><option value="ml">ml</option></select></div></div><div class="grid4">'+fld("nf-kcal","Kcal","",'inputmode="decimal"')+fld("nf-p","Prot.","",'inputmode="decimal"')+fld("nf-g","Gluc.","",'inputmode="decimal"')+fld("nf-l","Lip.","",'inputmode="decimal"')+'</div>';
-  add += '<button type="button" class="btn" data-act="riAdd">Ajouter au repas</button></div>';
-  return '<div class="stack" id="ri-items">'+(rows||'<div class="small muted">Aucun aliment pour l\'instant.</div>')+'</div>'+add;
+  return '<div class="stack" id="ri-items">'+(rows||'<div class="small muted">Aucun aliment pour l\'instant.</div>')+'</div><button type="button" class="btn full" data-act="fpOpen" data-k="add">+ Ajouter un aliment</button>';
 }
 function mealDraftTotal(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const m = mealMacros(dr); const el = document.getElementById("ri-tot");
   if (el) el.innerHTML = '<b class="num">'+Math.round(m.kcal)+' kcal</b> · P '+r1(m.p)+' · G '+r1(m.g)+' · L '+r1(m.l); }
 SHEETS.repas = { html(ds){
   if (!S.sheet.draft){ const j = journalOf(S.ui.jourDiet); const r = ds.i!=null && ds.i!=="" ? j.repas[+ds.i] : null;
-    S.sheet.draft = r ? JSON.parse(JSON.stringify(r)) : {heure:"", nom:"", items:[], fait:true}; S.sheet.addSel = S.sheet.addSel || "poulet"; }
+    S.sheet.draft = r ? JSON.parse(JSON.stringify(r)) : {heure:"", nom:"", items:[], fait:true}; }
   const dr = S.sheet.draft; const isNew = !(ds.i!=null && ds.i!=="");
   return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · '+fShort(S.ui.jourDiet)+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
     mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+sheetBtns(!isNew); },
@@ -971,14 +1025,16 @@ document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.
     try { const r = await api({action:"arrets", q}); (S.sheet.tr.sug = S.sheet.tr.sug||{})[f] = r.arrets||[];
       box.innerHTML = (r.arrets||[]).slice(0,6).map((a,i)=>'<button type="button" class="btn sm ghost" style="justify-content:flex-start" data-act="trPick" data-f="'+f+'" data-i="'+i+'">'+esc(a.nom)+'</button>').join("") || '<span class="small muted">Aucun arrêt trouvé.</span>';
     } catch(err){ box.innerHTML = '<span class="small up">'+esc(errMsg(err))+'</span>'; } }, 350); });
+function keepRepas(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value; }
 function syncDraft(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
   const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value;
   dr.items.forEach((it,k)=>{ const e = document.getElementById("ri-q-"+k); if (e){ const v = num(e.value); it.q = v==null?0:v; } }); }
 document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="repas") return;
   if (t.id && t.id.startsWith("ri-q-")){ syncDraft(); const k = t.dataset.k; const m = itemMacros(S.sheet.draft.items[k]); const el = document.getElementById("ri-k-"+k); if (el) el.textContent = Math.round(m.kcal)+" kcal"; mealDraftTotal(); } });
 document.addEventListener("change", e => { const t = e.target; if (!S.sheet) return;
-  if (t.id==="ri-add"){ syncDraft(); S.sheet.addSel = t.value; renderSheet(); }
-  else if (t.id && t.id.startsWith("ri-a-") && S.sheet.draft){ syncDraft(); S.sheet.draft.items[+t.dataset.k].a = t.value; renderSheet(); } });
+  if (t.id==="nf-photo" && t.files && t.files[0]) lireEtiquette(t.files[0], t); });
+document.addEventListener("input", e => { const t = e.target; if (t.id!=="fp-q" || !S.sheet || !S.sheet.fp) return;
+  S.sheet.fp.q = t.value; const box = document.getElementById("fp-res"); if (box) box.innerHTML = fpResults(); });
 SHEETS.montantMois = { html(ds){ const M = S.ui.mois, f = S.fixes.find(x=>x.id===ds.id)||{}; const m = S.mois[M]||{}; const cur = (m.montants||{})[ds.id];
     const prevM = addMonths(M,-1), prev = ((S.mois[prevM]||{}).montants||{})[ds.id]; const sugg = typeof prev==="number" ? prev : f.montant;
     return '<h2 class="h2">'+esc(f.nom)+' · <span class="cap">'+fMonth(M)+'</span></h2>'+fld("s-mm","Montant ce mois (CHF)",typeof cur==="number"?cur:"",'inputmode="decimal" placeholder="'+(typeof sugg==="number"?sugg:"")+'"')+
@@ -1106,14 +1162,23 @@ const ACT = {
   async jFait(d){ const day = S.ui.jourDiet, j = journalOf(day); j.repas[+d.i].fait = !j.repas[+d.i].fait; try{ await saveJournal(day, j); }catch(e){} },
   async jAll(){ const day = S.ui.jourDiet, j = journalOf(day); const all = j.repas.every(r=>r.fait); j.repas.forEach(r=>{ r.fait = !all; }); try{ await saveJournal(day, j); toast(all?"Repas décochés":"Journée validée"); }catch(e){} },
   riDel(d){ syncDraft(); S.sheet.draft.items.splice(+d.k,1); renderSheet(); },
-  async riAdd(){ syncDraft(); const sel = val("ri-add"), q = num(val("ri-addq"));
-    if (q==null || q<=0) return toast("Entre une quantité.", true);
-    let id = sel;
-    if (sel==="__new"){ const nom = val("nf-nom").trim(), kc = num(val("nf-kcal")), p = num(val("nf-p")), g = num(val("nf-g")), l = num(val("nf-l"));
-      if (!nom || kc==null || p==null || g==null || l==null) return toast("Nom et les 4 valeurs pour 100 g sont obligatoires.", true);
-      id = "perso-"+uid(); try{ await put("aliments/"+id, {nom, unite:val("nf-unite")||"g", kcal:kc, p, g, l, perso:true}); }catch(e){ return; }
-      S.sheet.addSel = id; }
-    S.sheet.draft.items.push({a:id, q}); renderSheet(); }
+  fpOpen(d){ syncDraft(); keepRepas(); S.sheet.fp = {k:d.k, q:"", cat:""}; renderSheet(); setTimeout(()=>{ const e = document.getElementById("fp-q"); if (e) e.focus(); }, 80); },
+  fpClose(){ S.sheet.fp = null; renderSheet(); },
+  fpCat(d){ S.sheet.fp.cat = d.k; S.sheet.fp.q = val("fp-q"); renderSheet(); },
+  fpPick(d){ const fp = S.sheet.fp, dr = S.sheet.draft;
+    if (fp.k==="add"){ const a = food(d.id); dr.items.push({a:d.id, q:a && a.unite==="ml" ? 100 : 100}); S.sheet.focusLast = true; }
+    else dr.items[+fp.k].a = d.id;
+    S.sheet.fp = null; renderSheet(); mealDraftTotal();
+    if (S.sheet.focusLast){ S.sheet.focusLast = false; setTimeout(()=>{ const e = document.getElementById("ri-q-"+(dr.items.length-1)); if (e){ e.focus(); e.select(); } }, 80); } },
+  nfOpen(){ S.sheet.nf = true; S.sheet.nfv = {nom:(S.sheet.fp&&S.sheet.fp.q)||""}; S.sheet.fp = null; renderSheet(); },
+  nfClose(){ S.sheet.nf = false; renderSheet(); },
+  async nfSave(){ const nom = val("nf-nom").trim(), kc = num(val("nf-kcal")), p = num(val("nf-p")), g = num(val("nf-g")), l = num(val("nf-l")), q = num(val("nf-q"));
+    if (!nom) return toast("Donne un nom à l'aliment.", true);
+    if (kc==null || p==null || g==null || l==null) return toast("Les 4 valeurs pour 100 g sont obligatoires.", true);
+    if (q==null || q<=0) return toast("Indique la quantité mangée.", true);
+    const id = "perso-"+uid(); try{ await put("aliments/"+id, {nom, unite:val("nf-unite")||"g", kcal:kc, p, g, l, perso:true}); }catch(e){ return; }
+    S.aliments = {...(S.aliments||{}), [id]:{nom, unite:val("nf-unite")||"g", kcal:kc, p, g, l, perso:true}};
+    S.sheet.draft.items.push({a:id, q}); S.sheet.nf = false; renderSheet(); mealDraftTotal(); toast("Aliment créé et ajouté"); }
 };
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]"); if (!el) return;
@@ -1662,7 +1727,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027135210";
+const APP_VERSION = "20261027164109";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
