@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-kRBO/J2A4pb41HIgMJ0LQYk2aAQ4C2apjjmmMzocoU0='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-GjgP4OvSVJWPrPpj5J5qrhx1hqivSKc0Tws7DUtiT6E='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1246,6 +1246,7 @@ function legTxt(l){
   return lab+" · "+shortStop(l.dep.nom)+" "+hfr(hhmm(l.dep.prevu))+(dd>0?" (+"+dd+")":"")+voie+" → "+shortStop(l.arr.nom)+" "+hfr(hhmm(l.arr.prevu))+(da>0?" (+"+da+")":"")+(l.annule?" · SUPPRIMÉ":"");
 }
 const optLines = o => o ? o.legs.map(legTxt).filter(Boolean) : [];
+const NOPT = 6;
 function pickOptions(trips, mode, cibleIso){
   const ok = trips.filter(t=>t.legs.some(l=>l.type==="pt") && !t.legs.some(l=>l.annule));
   const noRE = ok.filter(t=>!tripHasRE(t)); const pool = noRE.length ? noRE : ok; const c = new Date(cibleIso).getTime();
@@ -1255,36 +1256,40 @@ function pickOptions(trips, mode, cibleIso){
   // Varier les options : une par première ligne (tram 14, 18, bus 10…) avant de compléter.
   const firstL = t => t.legs.find(x=>x.type==="pt") || {};
   const pris = [], modes = new Set(), vus = new Set();
-  L.forEach(t=>{ const m = firstL(t).mode; if (pris.length<3 && !modes.has(m)){ pris.push(t); modes.add(m); vus.add(firstL(t).ligne); } });
-  L.forEach(t=>{ if (pris.length<3 && !pris.includes(t) && !vus.has(firstL(t).ligne)){ pris.push(t); vus.add(firstL(t).ligne); } });
-  L.forEach(t=>{ if (pris.length<3 && !pris.includes(t)) pris.push(t); });
+  L.forEach(t=>{ const m = firstL(t).mode; if (pris.length<NOPT && !modes.has(m)){ pris.push(t); modes.add(m); vus.add(firstL(t).ligne); } });
+  L.forEach(t=>{ if (pris.length<NOPT && !pris.includes(t) && !vus.has(firstL(t).ligne)){ pris.push(t); vus.add(firstL(t).ligne); } });
+  L.forEach(t=>{ if (pris.length<NOPT && !pris.includes(t)) pris.push(t); });
   return pris.sort((a,b)=> mode==="arriver" ? (a.arrivee>b.arrivee?-1:1) : (a.depart<b.depart?-1:1));
 }
 async function trajetOptions(depuis, vers, mode, dateS, min, cache){
   const iso = isoAt(dateS, min), k = depuis.ref+"|"+vers.ref+"|"+mode+"|"+iso;
   if (cache && cache[k]) return cache[k];
-  const r = await api({action:"trajet", from:depuis, to:vers, time:iso, arrive:mode==="arriver", n:8});
+  const r = await api({action:"trajet", from:depuis, to:vers, time:iso, arrive:mode==="arriver", n:12});
   const o = pickOptions(r.trajets||[], mode, iso); if (cache) cache[k] = o; return o;
 }
 // Trajet en plusieurs tronçons (ex. trottinette puis bus 22). Chaque chaîne = un itinéraire possible.
 async function chainOptions(chaines, dateS, min, cache){
   const out = [];
   for (const chain of chaines){
-    const hasPt = chain.some(sg=>!sg.trott);
-    for (const variant of (hasPt ? [0,1] : [0])){
-      let t = min, legs = [], depart = null, arrivee = null, ok = true, first = true;
-      for (let k=0; k<chain.length; k++){ const sg = chain[k];
-        if (sg.trott){ const dep = isoAt(dateS, t), arr = isoAt(dateS, t+sg.trott);
-          legs.push({type:"trott", minutes:sg.trott, de:sg.de.nom, vers:sg.a.nom, dep, arr}); depart = depart||dep; arrivee = arr; t += sg.trott; continue; }
-        const opts = await trajetOptions(sg.de, sg.a, "partir", dateS, t, cache); const idx = first ? variant : 0; first = false;
-        if (!opts.length || idx>=opts.length){ ok = false; break; }
-        const o = opts[idx]; legs.push(...o.legs); depart = depart||o.depart; arrivee = o.arrivee;
-        t = isoMinLocal(o.arrivee) + (chain[k+1] && !chain[k+1].trott ? 2 : 0); }
-      if (ok && legs.length) out.push({depart, arrivee, minutes:Math.round((new Date(arrivee)-new Date(depart))/60000), changements:Math.max(0, legs.filter(l=>l.type!=="marche").length-1), legs});
+    // tronçons trottinette en tête : on part juste à temps pour le transport choisi
+    let lead = 0, i0 = 0; while (i0<chain.length && chain[i0].trott){ lead += chain[i0].trott; i0++; }
+    if (i0>=chain.length){ let t = min; const legs = chain.map(sg=>{ const l = {type:"trott", minutes:sg.trott, de:sg.de.nom, vers:sg.a.nom, dep:isoAt(dateS,t), arr:isoAt(dateS,t+sg.trott)}; t += sg.trott; return l; });
+      out.push({depart:legs[0].dep, arrivee:legs[legs.length-1].arr, minutes:t-min, changements:0, legs}); continue; }
+    const first = await trajetOptions(chain[i0].de, chain[i0].a, "partir", dateS, min+lead+(lead?1:0), cache);
+    for (const o0 of first){
+      const legs = [], busDep = isoMinLocal(o0.depart); let t = Math.max(min, busDep - lead - (lead?1:0)), ok = true;
+      for (let k=0;k<i0;k++){ const sg = chain[k]; legs.push({type:"trott", minutes:sg.trott, de:sg.de.nom, vers:sg.a.nom, dep:isoAt(dateS,t), arr:isoAt(dateS,t+sg.trott)}); t += sg.trott; }
+      legs.push(...o0.legs); let arrivee = o0.arrivee; t = isoMinLocal(o0.arrivee);
+      for (let k=i0+1;k<chain.length;k++){ const sg = chain[k];
+        if (sg.trott){ legs.push({type:"trott", minutes:sg.trott, de:sg.de.nom, vers:sg.a.nom, dep:isoAt(dateS,t), arr:isoAt(dateS,t+sg.trott)}); t += sg.trott; arrivee = isoAt(dateS,t); continue; }
+        const opts = await trajetOptions(sg.de, sg.a, "partir", dateS, t+2, cache); if (!opts.length){ ok = false; break; }
+        legs.push(...opts[0].legs); arrivee = opts[0].arrivee; t = isoMinLocal(opts[0].arrivee); }
+      const depart = i0>0 ? legs[0].dep : o0.depart;
+      if (ok) out.push({depart, arrivee, minutes:Math.round((new Date(arrivee)-new Date(depart))/60000), changements:Math.max(0, legs.filter(l=>l.type!=="marche").length-1), legs});
     }
   }
   const seen = {}; return out.filter(o=>{ const k = o.depart+o.arrivee+o.legs.map(l=>l.ligne||l.type).join(); if (seen[k]) return false; seen[k] = 1; return true; })
-    .sort((a,b)=>a.arrivee<b.arrivee?-1:1).slice(0,3);
+    .sort((a,b)=>a.depart<b.depart?-1:a.depart>b.depart?1:(a.arrivee<b.arrivee?-1:1)).slice(0,NOPT);
 }
 const tjOptions = (tj, dateS, min, cache) => tj.chaines ? chainOptions(tj.chaines, dateS, min, cache||{}) : trajetOptions(tj.depuis, tj.vers, tj.mode, dateS, min, cache||{});
 const optSel = tj => tj && tj.options && tj.options[tj.choisi||0];
@@ -1750,7 +1755,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027175339";
+const APP_VERSION = "20261027180911";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
