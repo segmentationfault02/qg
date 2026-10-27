@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-gUgnZZ3L4CcRe1T3RMfpE3oSfEg3qahi/gyBOWYQMBY='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-0/nmgGf6eIG2bMbbNghRq3Ex/c9hLWYBdTvm3v7k/MU='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -313,7 +313,9 @@ function journalDraft(d, type){ const t = tplDay(type) || {repas:[]};
 function journalOf(d){ return S.journal[d] ? JSON.parse(JSON.stringify(S.journal[d])) : journalDraft(d, dayType(d)); }
 function journalStats(j){ const all = (j.repas||[]); const eaten = all.filter(r=>r.fait);
   const T = (tplDay(j.type)||{}).repas || [];
-  const baseMange = eaten.map(r=>{ const m = /^t(\d+)$/.exec(r.id||""); return m && T[+m[1]] ? mealMacros(T[+m[1]]) : ZERO; }).reduce(addM,ZERO);
+  const ids = new Set(all.map(r=>r.id));
+  const baseMange = eaten.map(r=>{ const m = /^t(\d+)$/.exec(r.id||""); return m && T[+m[1]] ? mealMacros(T[+m[1]]) : ZERO; })
+    .concat(T.map((r,i)=>ids.has("t"+i) ? ZERO : mealMacros(r))).reduce(addM,ZERO);
   const mange = eaten.map(mealMacros).reduce(addM,ZERO);
   const ecart = {kcal:mange.kcal-baseMange.kcal, p:mange.p-baseMange.p, g:mange.g-baseMange.g, l:mange.l-baseMange.l};
   return { mange, prevu: all.map(mealMacros).reduce(addM,ZERO), tpl: dayMacros(tplDay(j.type)), ecart, nbFait: eaten.length, nb: all.length }; }
@@ -678,7 +680,7 @@ function journalView(){
   const B = st.tpl, E = st.ecart;
   h += '<div class="spread"><div><span class="big num">'+Math.round(st.mange.kcal)+'</span><span class="muted"> / '+Math.round(B.kcal)+' kcal</span>'+ecartTxt(E.kcal,"kcal")+'</div><span class="chip '+(st.nbFait===st.nb&&st.nb?"good":"acc")+'">'+st.nbFait+'/'+st.nb+' repas</span></div>';
   h += macroBar("Protéines", st.mange.p, B.p, "g", E.p)+macroBar("Glucides", st.mange.g, B.g, "g", E.g)+macroBar("Lipides", st.mange.l, B.l, "g", E.l);
-  h += '<div class="hint">Objectif = ta diet de base ('+(j.type==="training"?"training":"off")+'). Entre parenthèses : l\'écart sur les repas déjà cochés, comparés aux mêmes repas de la base. Un repas ajouté compte en entier.</div>';
+  h += '<div class="hint">Objectif = ta diet de base ('+(j.type==="training"?"training":"off")+'). Entre parenthèses : l\'écart sur les repas cochés (comparés aux mêmes repas de la base) et les repas de la base que tu as supprimés. Les repas pas encore cochés ne comptent pas.</div>';
   h += '</section><section class="card">';
   h += (j.repas||[]).map((r,i)=>{ const mm = mealMacros(r);
     return '<div class="meal'+(r.fait?' done':'')+'"><div class="row" style="align-items:flex-start">'+chk(r.fait,"jFait",'data-i="'+i+'"')+
@@ -1731,7 +1733,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027164532";
+const APP_VERSION = "20261027164751";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
