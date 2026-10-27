@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-GjgP4OvSVJWPrPpj5J5qrhx1hqivSKc0Tws7DUtiT6E='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-N4jV/x8ym4noNgtSXAKY1IkqSaUF2RmOmY8ovmbZUfM='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1411,7 +1411,7 @@ function prepInit(dateS){
   const wk = weekDoc(mondayOf(d)).jours[String((dow(d)+6)%7)] || {};
   const lieu = wk.lieu && wk.lieu!=="Pas d'école" ? wk.lieu : (wk.lieu==="Pas d'école" ? "Pas d'école" : "Renens");
   S.prep = { date:d, step:1, seance:nom, jyvais:nom!=="repos", objectifs:(wk.objectifs||[]).filter(o=>!o.fait),
-    reveil:c.reveil, ez:"rien", ezHeure:"08:30", chien:false, trott:true, repasMaison:false, edit:-1, salle:(S.app.agenda||{}).derniereSalle==="american"?"sunset":"american", lieu, autres:[],
+    reveil:c.reveil, ez:"rien", ezHeure:"08:30", chien:false, trott:true, repasMaison:false, edit:-1, moment:"matin", salleHeure:"18:00", salle:(S.app.agenda||{}).derniereSalle==="american"?"sunset":"american", lieu, autres:[],
     cache:{}, choix:{}, taches:null, building:false, err:null, shift:0 };
   loadDurees();
 }
@@ -1433,6 +1433,8 @@ VIEWS.prep = { title:"Organiser la journée", body(){
       '<span class="eyebrow">Chien chez ma mère</span>'+seg("prepSet", P.chien?"oui":"non", [["non","Non"],["oui","Oui"]], ' data-f="chien"')+
       (P.chien?'<span class="eyebrow">Déplacements (selon la météo)</span>'+seg("prepSet", P.trott?"trott":"tc", [["trott","Trottinette"],["tc","Transports"]], ' data-f="trott"')+
         '<span class="eyebrow">Après le chien, je mange</span>'+seg("prepSet", P.repasMaison?"maison":"mere", [["mere","Chez ma mère"],["maison","À la maison"]], ' data-f="repasMaison"'):'')+
+      (P.jyvais && P.seance!=="repos"?'<span class="eyebrow">Séance</span>'+seg("prepSet", P.moment, [["matin","Le matin"],["soir","Le soir"]], ' data-f="moment"')+
+        (P.moment==="soir"?'<div class="field"><label for="pr-sh">Départ pour la salle</label><input class="inp num" type="time" id="pr-sh" value="'+esc(P.salleHeure)+'"></div>':''):'')+
       (P.jyvais && P.seance!=="repos"?'<span class="eyebrow">Salle</span>'+(P.chien?'<div class="small">Sunset (toujours avec le chien)</div>':seg("prepSet", P.salle, [["american","American"],["sunset","Sunset"]], ' data-f="salle"')):'')+
       '<span class="eyebrow">École</span>'+seg("prepSet", P.lieu, [["Renens","Renens"],["Uni-Mail","Uni-Mail"],["Maison","Maison"],["Pas d'école","Aucune"]], ' data-f="lieu"')+
       '<span class="eyebrow">Autre chose</span>'+(P.autres.length?'<div class="small">'+P.autres.map((a,i)=>hfr(a.heure)+' '+esc(a.titre)+' <button class="btn sm ghost" data-act="prepDelAutre" data-i="'+i+'">Retirer</button>').join("<br>")+'</div>':'')+
@@ -1463,7 +1465,7 @@ VIEWS.prep = { title:"Organiser la journée", body(){
     (P.step<4?'<button class="btn pri grow" data-act="prepNav" data-n="1">Suivant</button>':'<button class="btn pri grow" data-act="prepSave">Valider</button>')+'</div>';
   return h;
 }};
-function prepReadInputs(){ const P = S.prep; if (!P) return; const r = document.getElementById("pr-reveil"), e = document.getElementById("pr-ez"); if (r && r.value) P.reveil = r.value; if (e && e.value) P.ezHeure = e.value; }
+function prepReadInputs(){ const P = S.prep; if (!P) return; const r = document.getElementById("pr-reveil"), e = document.getElementById("pr-ez"); if (r && r.value) P.reveil = r.value; if (e && e.value) P.ezHeure = e.value; const sh = document.getElementById("pr-sh"); if (sh && sh.value) P.salleHeure = sh.value; }
 async function prepBuild(){
   const P = S.prep, c = agCfg(), d = P.date; P.building = true; P.err = null; render();
   try {
@@ -1475,7 +1477,8 @@ async function prepBuild(){
                                                         : await opt("maison","Retour maison",AR.balexert,AR.servette,"partir",m);
       const a = (arrMinOf(tj) ?? m+20) + 3; taches.push(mk({type:"repas", debut:fromMin(a), fin:fromMin(a+c.repas), titre:"Repas et douche à la maison", trajets:[tj]})); pos = AR.poterie; return a + c.repas; };
     if (chien) P.salle = "sunset";
-    const go = P.jyvais && P.seance!=="repos", salleStop = P.salle==="sunset"?AR.bac:AR.queue, salleNom = P.salle==="sunset"?"Sunset":"American";
+    const soir = P.jyvais && P.seance!=="repos" && P.moment==="soir";
+    const go = P.jyvais && P.seance!=="repos" && !soir, salleStop = P.salle==="sunset"?AR.bac:AR.queue, salleNom = P.salle==="sunset"?"Sunset":"American";
     let after = null, tCur = toMin(P.reveil)+c.prepSalle, pos = AR.poterie;
     if (d===today()) tCur = Math.max(tCur, toMin(nowHM())+10);
     if (P.ez==="depose"){ const H = toMin(P.ezHeure); const t1 = mk({type:"depose", debut:fromMin(H), titre:"Dépose Ezekiel"});
@@ -1515,6 +1518,13 @@ async function prepBuild(){
     if (P.ez==="recup"){ const H = toMin(P.ezHeure); const t2 = mk({type:"recup", debut:fromMin(H), titre:"Récupérer Ezekiel"});
       const tj = await opt("recup","",pos,AR.butini,"arriver",H); t2.trajets.push(tj); taches.push(t2);
       const ec = taches.find(x=>x.type==="ecole"); if (ec && depMinOf(tj)!=null) ec.fin = fromMin(depMinOf(tj)); }
+    if (soir){ const ec = taches.find(x=>x.type==="ecole");
+      const H = Math.max(toMin(P.salleHeure) ?? 18*60, ec && ec.debut ? toMin(ec.debut)+60 : tCur);
+      if (ec && !ec.fin) ec.fin = fromMin(H);
+      const tj = await opt("salle","",pos,salleStop,"partir",H);
+      const arr = arrMinOf(tj) ?? H+25, deb = arr+5, dur = dureeSeance(P.seance), fin = deb+dur;
+      const ts = mk({type:"seance", debut:fromMin(deb), fin:fromMin(fin), titre:"Séance "+P.seance+" à "+salleNom, seance:{type:P.seance, salle:P.salle, duree:dur}});
+      ts.trajets.push(tj, await opt("retour","Retour",salleStop,AR.servette,"partir",fin+c.sortie)); taches.push(ts); }
     P.autres.forEach(a=>taches.push(mk({type:"libre", debut:a.heure, titre:a.titre})));
     P.taches = sortT(taches);
   } catch(e){ P.err = errMsg(e); }
@@ -1755,7 +1765,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027180911";
+const APP_VERSION = "20261027181508";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
