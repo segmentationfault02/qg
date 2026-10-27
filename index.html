@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-XgNHmO5A4lRYOc/jYgvkOWOOx/puzyf8+uZ/VMJQzXQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-0xCIZLgGzBzWD4pb6esBg6fgGCuK9vmdCDN98uA9c30='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1225,11 +1225,33 @@ function sousTitre(seance, salle, lieu, chien){
 }
 
 /* ---------- rendu d'une tâche ---------- */
-function trajetBlock(tj){
+function trajetBlock(tj, live){
   const lines = optLines(optSel(tj)); if (!lines.length) return "";
   if (tj.label) lines[0] = tj.label+" · "+lines[0];
-  return '<div class="trajet">'+lines.map(esc).join("<br>")+'</div>';
+  if (live && live.options && live.options.length){
+    const o = live.options[0], L = optLines(o); if (tj.label) L[0] = tj.label+" · "+L[0];
+    const nx = live.options[1];
+    return '<div class="trajet" style="border-left-color:var(--good);background:var(--good-soft)"><div class="small" style="font-weight:600;color:var(--good)">En direct · prévu '+hfr(hhmm(optSel(tj).depart))+' raté, prochain départ</div>'+L.map(esc).join("<br>")+
+      (nx?'<div class="small muted">Sinon : '+hfr(hhmm(nx.depart))+' → '+hfr(hhmm(nx.arrivee))+'</div>':'')+'</div>';
+  }
+  if (live && live.vide) return '<div class="trajet">'+lines.map(esc).join("<br>")+'<div class="small up">Départ prévu passé, aucun autre départ trouvé.</div></div>';
+  return '<div class="trajet">'+lines.map(esc).join("<br>")+(live && live.loading ? '<div class="small muted">Départ passé, recherche du suivant…</div>' : '')+'</div>';
 }
+/* Suivi en direct : si le départ prévu d'un trajet est passé et que la tâche n'est pas cochée,
+   on recherche les prochains départs à partir de maintenant (affichage seulement). */
+S.liveTj = {};
+function liveFor(d, t, j, tj){
+  if (d!==today() || t.fait) return null; const o = optSel(tj); if (!o) return null;
+  const now = Date.now(), dep = new Date(o.depart).getTime();
+  if (dep >= now - 60000 || now - dep > 4*3600000) return null;
+  const nm = toMin(nowHM()), key = d+"|"+t.id+"|"+j, e = S.liveTj[key];
+  if (e && (e.loading || e.min===nm)) return e;
+  S.liveTj[key] = {...(e||{}), loading:!e || !e.options, min:nm};
+  tjOptions(tj, d, nm, {}).then(opts=>{ S.liveTj[key] = {options:opts, vide:!opts.length, min:nm}; render(); })
+    .catch(()=>{ S.liveTj[key] = {...(S.liveTj[key]||{}), loading:false, min:nm}; });
+  return S.liveTj[key];
+}
+setInterval(()=>{ if (!document.hidden && (S.view==="agenda" || S.view==="accueil") && !S.sheet) render(); }, 60000);
 function tacheHtml(d, t, i, opts){
   opts = opts||{};
   const heure = t.debut ? hfr(t.debut)+(t.fin?" - "+hfr(t.fin):"") : "";
@@ -1238,7 +1260,7 @@ function tacheHtml(d, t, i, opts){
     '<div><b class="num">'+esc(heure)+'</b>'+(heure?'&nbsp; ':'')+'<span class="t">'+esc(t.titre)+'</span></div>'+
     (t.fait && t.faitA ? '<div class="small muted">fini à '+hfr(t.faitA)+'</div>' : '')+
     (t.note ? '<div class="small muted">'+esc(t.note)+'</div>' : '')+
-    (t.trajets||[]).map(trajetBlock).join("")+(t.trajetTexte?'<div class="trajet">'+esc(t.trajetTexte)+'</div>':'')+'</div></div>';
+    (t.trajets||[]).map((tj,j)=>trajetBlock(tj, opts.static ? null : liveFor(d, t, j, tj))).join("")+(t.trajetTexte?'<div class="trajet">'+esc(t.trajetTexte)+'</div>':'')+'</div></div>';
   if (t.type==="seance" && !opts.static && d===today() && !t.fait){
     const s = t.seance||{};
     if (!s.debutReel) h += '<div style="padding:0 0 10px 34px"><button class="btn sm pri" data-act="seanceStart" data-d="'+d+'" data-i="'+i+'">J\'ai commencé la séance</button></div>';
@@ -1624,7 +1646,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027095917";
+const APP_VERSION = "20261027100050";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
