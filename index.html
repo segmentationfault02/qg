@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-/Aj+9SXRgIhqyOb1GfnNsDYpYo8Q5pfymuuPCUhgYUI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-fQgR+zP06BBINo332sUmUuvTxHj/8uWOumP3mFyjHyI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -928,13 +928,20 @@ SHEETS.revenu = { html(){ const M = S.ui.mois; const r = S.mois[M]&&S.mois[M].re
 SHEETS.objectif = { html(ds){ return '<h2 class="h2">Objectif · '+DOWL[dow(addDays(S.ui.ecoleWeek,+ds.i))]+'</h2>'+fld("s-obj","Objectif","",'placeholder="Donner 2 corrections"')+sheetBtns(false); },
   async save(ds){ const t = val("s-obj").trim(); if (!t) return toast("Objectif vide.",true); await editDay(+ds.i, j=>{ j.objectifs=(j.objectifs||[]).concat({id:uid(),texte:t,fait:false}); }); toast("Objectif ajouté"); } };
 
+/* Classement des aliments par macro dominante (en calories) : Protéines, Glucides, Lipides. */
+function foodCat(a){ if (a.cat) return a.cat; const p = (a.p||0)*4, g = (a.g||0)*4, l = (a.l||0)*9; return p>=g && p>=l ? "Protéines" : g>=l ? "Glucides" : "Lipides"; }
+function foodOptions(F, selId){
+  const groups = {"Protéines":[], "Glucides":[], "Lipides":[]};
+  Object.entries(F).forEach(([id,a])=>{ (groups[foodCat(a)] = groups[foodCat(a)]||[]).push([id,a]); });
+  return Object.entries(groups).filter(([,L])=>L.length).map(([g,L])=>'<optgroup label="'+g+'">'+
+    L.sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr")).map(([id,a])=>'<option value="'+esc(id)+'"'+(id===selId?" selected":"")+'>'+esc(a.nom)+'</option>').join("")+'</optgroup>').join("");
+}
 function mealDraftItemsHtml(dr){
   const F = allFoods();
-  const sorted = Object.entries(F).sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr"));
   const rows = (dr.items||[]).map((it,k)=>{ const a = F[it.a]||{nom:it.a,unite:"g"}; const m = itemMacros(it);
-    return '<div class="stack" style="gap:6px;padding:8px 0;border-top:1px solid var(--line)"><select class="inp" id="ri-a-'+k+'" data-k="'+k+'" aria-label="Aliment">'+sorted.map(([id,x])=>'<option value="'+esc(id)+'"'+(id===it.a?" selected":"")+'>'+esc(x.nom)+'</option>').join("")+(F[it.a]?'':'<option selected>'+esc(it.a)+'</option>')+'</select>'+
+    return '<div class="stack" style="gap:6px;padding:8px 0;border-top:1px solid var(--line)"><select class="inp" id="ri-a-'+k+'" data-k="'+k+'" aria-label="Aliment">'+foodOptions(F, it.a)+(F[it.a]?'':'<option selected>'+esc(it.a)+'</option>')+'</select>'+
       '<div class="row" style="gap:8px"><input class="inp num" style="width:96px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité"><span class="small muted">'+(a.unite||"g")+'</span><span class="grow small num muted" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:34px;height:34px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer cet aliment">×</button></div></div>'; }).join("");
-  const opts = Object.entries(F).sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr")).map(([id,a])=>'<option value="'+esc(id)+'"'+(S.sheet.addSel===id?" selected":"")+'>'+esc(a.nom)+'</option>').join("");
+  const opts = foodOptions(F, S.sheet.addSel);
   let add = '<div class="card" style="gap:8px;background:var(--surface2)"><span class="eyebrow">Ajouter un aliment</span><div class="row" style="gap:8px"><select class="inp grow" id="ri-add" style="min-width:0">'+opts+'<option value="__new"'+(S.sheet.addSel==="__new"?" selected":"")+'>Nouvel aliment…</option></select><input class="inp num" style="width:84px" id="ri-addq" inputmode="decimal" placeholder="g"></div>';
   if (S.sheet.addSel==="__new") add += '<div class="hint">Macros pour 100 g (ou 100 ml), lues sur l\'étiquette.</div><div class="grid2">'+fld("nf-nom","Nom","",'placeholder="Skyr nature"')+'<div class="field"><label for="nf-unite">Unité</label><select class="inp" id="nf-unite"><option value="g">g</option><option value="ml">ml</option></select></div></div><div class="grid4">'+fld("nf-kcal","Kcal","",'inputmode="decimal"')+fld("nf-p","Prot.","",'inputmode="decimal"')+fld("nf-g","Gluc.","",'inputmode="decimal"')+fld("nf-l","Lip.","",'inputmode="decimal"')+'</div>';
   add += '<button type="button" class="btn" data-act="riAdd">Ajouter au repas</button></div>';
@@ -1654,7 +1661,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027123655";
+const APP_VERSION = "20261027134320";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
