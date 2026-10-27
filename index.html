@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-0xCIZLgGzBzWD4pb6esBg6fgGCuK9vmdCDN98uA9c30='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-/Aj+9SXRgIhqyOb1GfnNsDYpYo8Q5pfymuuPCUhgYUI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1173,12 +1173,18 @@ function pickOptions(trips, mode, cibleIso){
   let L = mode==="arriver" ? pool.filter(t=>new Date(t.arrivee).getTime()<=c+60000).sort((a,b)=>a.arrivee>b.arrivee?-1:1)
                            : pool.filter(t=>new Date(t.depart).getTime()>=c-60000).sort((a,b)=>a.depart<b.depart?-1:1);
   if (!L.length) L = pool.slice();
-  return L.slice(0,3);
+  // Varier les options : une par première ligne (tram 14, 18, bus 10…) avant de compléter.
+  const firstL = t => t.legs.find(x=>x.type==="pt") || {};
+  const pris = [], modes = new Set(), vus = new Set();
+  L.forEach(t=>{ const m = firstL(t).mode; if (pris.length<3 && !modes.has(m)){ pris.push(t); modes.add(m); vus.add(firstL(t).ligne); } });
+  L.forEach(t=>{ if (pris.length<3 && !pris.includes(t) && !vus.has(firstL(t).ligne)){ pris.push(t); vus.add(firstL(t).ligne); } });
+  L.forEach(t=>{ if (pris.length<3 && !pris.includes(t)) pris.push(t); });
+  return pris.sort((a,b)=> mode==="arriver" ? (a.arrivee>b.arrivee?-1:1) : (a.depart<b.depart?-1:1));
 }
 async function trajetOptions(depuis, vers, mode, dateS, min, cache){
   const iso = isoAt(dateS, min), k = depuis.ref+"|"+vers.ref+"|"+mode+"|"+iso;
   if (cache && cache[k]) return cache[k];
-  const r = await api({action:"trajet", from:depuis, to:vers, time:iso, arrive:mode==="arriver", n:6});
+  const r = await api({action:"trajet", from:depuis, to:vers, time:iso, arrive:mode==="arriver", n:8});
   const o = pickOptions(r.trajets||[], mode, iso); if (cache) cache[k] = o; return o;
 }
 // Trajet en plusieurs tronçons (ex. trottinette puis bus 22). Chaque chaîne = un itinéraire possible.
@@ -1435,7 +1441,7 @@ SHEETS.tache = { html(ds){ const doc = dayDoc(ds.d), t0 = doc.taches[+ds.i] || {
   return '<h2 class="h2">'+esc(t.titre||"Tâche")+'</h2><div class="grid2">'+fld("tk-debut","Début",t.debut,'type="time"')+fld("tk-fin","Fin",t.fin||"",'type="time"')+'</div>'+fld("tk-titre","Titre",t.titre,"")+
     (t.trajets||[]).map((tj,j)=>'<div class="card" style="background:var(--surface2);gap:6px"><span class="eyebrow">'+esc(tj.label||"Trajet")+' · '+esc(shortStop(tj.depuis&&tj.depuis.nom))+' → '+esc(shortStop(tj.vers&&tj.vers.nom))+'</span>'+
       (tj.options||[]).map((o,oi)=>'<button type="button" class="btn sm" style="justify-content:flex-start;text-align:left;'+(oi===(tj.choisi||0)?'border-color:var(--accent);background:var(--accent-soft)':'')+'" data-act="tkPick" data-j="'+j+'" data-i="'+oi+'">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+' · '+esc(o.legs.filter(l=>l.type==="pt"||l.type==="trott").map(l=>l.type==="trott"?"Trottinette":l.ligne).join(", "))+'</button>').join("")+
-      '<button type="button" class="btn sm ghost" data-act="tkRefresh" data-j="'+j+'">Actualiser les horaires</button></div>').join("")+
+      '<div class="row" style="gap:6px"><button type="button" class="btn sm ghost grow" data-act="tkRefresh" data-j="'+j+'">Actualiser</button><button type="button" class="btn sm danger grow" data-act="tkDelTrajet" data-j="'+j+'">Supprimer ce trajet</button></div></div>').join("")+
     (t.trajetTexte?'<div class="trajet">'+esc(t.trajetTexte)+'</div>':'')+
     '<button type="button" class="btn sm" data-act="tkTrajet">'+((t.trajets||[]).length?"Ajouter un autre trajet":"Ajouter un trajet")+'</button>'+sheetBtns(true); },
   async save(ds){ const doc = JSON.parse(JSON.stringify(dayDoc(ds.d))), t = doc.taches[+ds.i]; if (!t) return;
@@ -1473,6 +1479,8 @@ Object.assign(ACT, {
   async tkRefresh(d){ const doc = dayDoc(S.sheet.ds.d), t = doc.taches[+S.sheet.ds.i]; S.sheet.tkTrajets = S.sheet.tkTrajets || JSON.parse(JSON.stringify(t.trajets||[]));
     const tj = S.sheet.tkTrajets[+d.j]; toast("Actualisation…");
     try { const options = await tjOptions(tj, S.sheet.ds.d, toMin(tj.heureCible), {}); S.sheet.tkTrajets[+d.j] = {...tj, options, choisi:0}; keepTk(); renderSheet(); toast("Horaires à jour"); } catch(e){ toast(errMsg(e), true); } },
+  tkDelTrajet(d){ const doc = dayDoc(S.sheet.ds.d), t = doc.taches[+S.sheet.ds.i]; S.sheet.tkTrajets = S.sheet.tkTrajets || JSON.parse(JSON.stringify(t.trajets||[]));
+    S.sheet.tkTrajets.splice(+d.j,1); keepTk(); renderSheet(); toast("Trajet retiré, touche Enregistrer pour valider"); },
   tkTrajet(){ const ds = S.sheet.ds, doc = dayDoc(ds.d), t = doc.taches[+ds.i]; openSheet("trajet", {d:ds.d, i:ds.i, heure:t.debut}); },
   prepStart(){ const sel = S.ui.agendaDay; prepInit(sel && sel!=="semaine" && sel>=today() ? sel : addDays(today(),1)); S.view = "prep"; renderKeepScroll=false; window.scrollTo(0,0); render(); },
   prepQuit(){ S.prep = null; S.view = "agenda"; render(); },
@@ -1646,7 +1654,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261027100050";
+const APP_VERSION = "20261027123655";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
