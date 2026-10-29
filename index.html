@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-OIMf+Iee+yKGemE1uFzuygbT6Ww8VrqVkM5vUi+OWu8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-tAmxl6nqGgGv6KeOCamVzstlZ5jnYX+V6p8VIk61LkM='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -628,8 +628,8 @@ VIEWS.diet = { title:"Diet", body(){
       S.ui.riz = S.ui.riz||{};
       const L = S.riz.slice().sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
       const avg = sum(L.slice(0,5),x=>x.ratio)/Math.min(5,L.length);
-      h += '<section class="card"><div class="card-h"><span class="eyebrow">Tes fournées</span><span class="chip acc">ratio moyen '+avg.toFixed(2)+'</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Cru</th><th>Cuit</th><th>Ratio</th><th>Portion cuite</th></tr></thead><tbody>'+
-        L.slice(0,12).map(x=>'<tr><td>'+fShort(x.date)+'</td><td>'+x.cru+'</td><td>'+Math.round(x.cuit)+'</td><td>'+x.ratio.toFixed(2)+'</td><td>'+Math.round(x.portionCuite)+' g</td></tr>').join("")+'</tbody></table></div></section>';
+      h += '<section class="card"><div class="card-h"><span class="eyebrow">Tes fournées</span><span class="chip acc">ratio moyen '+avg.toFixed(2)+'</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Cru</th><th>Cuit</th><th>Ratio</th><th>Portion</th></tr></thead><tbody>'+
+        L.slice(0,12).map(x=>{ const pcr = x.portionCrue || (x.ratio ? x.portionCuite/x.ratio : portion); return '<tr><td>'+fShort(x.date)+'</td><td>'+x.cru+'</td><td>'+Math.round(x.cuit)+'</td><td>'+x.ratio.toFixed(2)+'</td><td style="white-space:nowrap"><b>'+Math.round(x.portionCuite)+' g</b> cuit<br><span class="muted">= '+Math.round(pcr)+' g cru</span></td></tr>'; }).join("")+'</tbody></table></div></section>';
     }
     return h;
   }
@@ -1819,7 +1819,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261029161830";
+const APP_VERSION = "20261029191642";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
