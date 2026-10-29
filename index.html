@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-I2+QYuKjlGCpgWUVUyv6Ef1cudBRbKB9D6kfYwWW1rs='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-OIMf+Iee+yKGemE1uFzuygbT6Ww8VrqVkM5vUi+OWu8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -285,6 +285,8 @@ function toast(msg, err){
 /* ---------- données dérivées ---------- */
 function splitFor(dateS){
   const t = S.app.training; if (!t || !t.jours) return null;
+  const ch = (t.changes||{})[dateS];
+  if (ch){ const base = Object.values(t.jours).find(j=>j && j.nom && j.nom.toLowerCase()===ch.toLowerCase()) || {}; return {...base, nom:ch, change:true}; }
   return t.jours[String(dow(dateS))] || null;
 }
 function dayType(dateS){
@@ -401,6 +403,13 @@ function weightChart(list, days){
 const VIEWS = {};
 
 /* ---------- ACCUEIL ---------- */
+function seancesDispo(){ const tr = S.app.training||{}; const L = []; Object.values(tr.jours||{}).forEach(j=>{ if (j && j.nom && !L.some(x=>x.toLowerCase()===j.nom.toLowerCase())) L.push(j.nom); });
+  if (!L.some(x=>x.toLowerCase()==="repos")) L.push("Repos"); return L.sort((a,b)=>(a.toLowerCase()==="repos")-(b.toLowerCase()==="repos")); }
+function seanceChoix(d){ const sp = splitFor(d), cur = sp ? sp.nom.toLowerCase() : "";
+  const def = ((S.app.training||{}).jours||{})[String(dow(d))];
+  return '<div class="stack" style="gap:6px"><div class="small muted">Qu\'est-ce que tu fais '+(d===today()?"aujourd\'hui":fShort(d))+' ?</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">'+
+    seancesDispo().map(n=>'<button class="btn sm'+(n.toLowerCase()===cur?' pri':'')+'" data-act="seanceSet" data-d="'+d+'" data-k="'+esc(n)+'">'+esc(n)+'</button>').join("")+'</div>'+
+    (sp && sp.change ? '<button class="btn sm ghost" data-act="seanceSet" data-d="'+d+'" data-k="">Remettre le programme ('+esc(def?def.nom:"?")+')</button>' : '')+'</div>'; }
 VIEWS.accueil = { title:"QG", body(){
   const t = today(), tm = addDays(t,1);
   const sp = splitFor(t), dt = dayType(t);
@@ -418,7 +427,8 @@ VIEWS.accueil = { title:"QG", body(){
 
   B.zepp = h; h = "";
   // Séance
-  h += '<section class="card"><div class="card-h"><span class="eyebrow">Séance du jour</span>'+(tr.programme?'<span class="chip">'+esc(tr.programme)+'</span>':'')+'</div>';
+  h += '<section class="card"><div class="card-h"><span class="eyebrow">Séance du jour'+(sp&&sp.change?' · modifiée':'')+'</span><button class="btn sm ghost" data-act="seanceEdit">'+(S.ui.seanceEdit?"Fermer":"Changer")+'</button></div>';
+  if (S.ui.seanceEdit) h += seanceChoix(t);
   if (loading("app")) h += '<div class="muted">…</div>';
   else if (!sp) h += '<div class="empty">Ton split n\'est pas encore renseigné.</div>';
   else if (dt==="off") h += '<div class="big">Repos</div><div class="muted small">Jour off, diet off.</div>';
@@ -1119,6 +1129,20 @@ const ACT = {
   corpsTab(d){ S.ui.corpsTab=d.k; render(); },
   dietTab(d){ S.ui.dietTab=d.k; render(); if (d.k==="riz") rizCalc(); },
   dietType(d){ S.ui.dietType=d.k; render(); },
+  seanceEdit(){ S.ui.seanceEdit = !S.ui.seanceEdit; render(); },
+  async seanceSet(d){ const day = d.d, tr = {...(S.app.training||{})}; delete tr.id; const avant = dayType(day);
+    const ch = {...(tr.changes||{})}; const def = (tr.jours||{})[String(dow(day))];
+    if (!d.k || (def && def.nom && def.nom.toLowerCase()===d.k.toLowerCase())) delete ch[day]; else ch[day] = d.k;
+    Object.keys(ch).forEach(k=>{ if (k < addDays(today(),-30)) delete ch[k]; });
+    tr.changes = ch; S.app.training = {...S.app.training, changes:ch};
+    try { await put("app/training", tr); } catch(e){ return; }
+    S.ui.seanceEdit = false; const apres = dayType(day);
+    if (avant!==apres && S.journal[day]){ const j = journalOf(day); const touched = (j.repas||[]).some(r=>r.fait||r.mod||r.ajoute);
+      if (!touched){ try { await saveJournal(day, journalDraft(day, apres)); } catch(e){} }
+      else toast("Séance changée. Ton journal diet a déjà des repas cochés : passe-le en jour "+(apres==="training"?"training":"off")+" dans Diet si besoin.");
+    }
+    if (!(avant!==apres && S.journal[day])) toast("Séance : "+(splitFor(day)||{nom:"?"}).nom);
+    render(); },
   argentTab(d){ S.ui.argentTab=d.k; render(); },
   poidsRange(d){ S.ui.poidsRange=+d.k; render(); },
   mois(d){ S.ui.mois = addMonths(S.ui.mois,+d.n); render(); },
@@ -1441,7 +1465,8 @@ VIEWS.prep = { title:"Organiser la journée", body(){
   let h = '<div class="spread"><b class="cap">'+fDay(P.date)+'</b><button class="btn sm ghost" data-act="prepQuit">Fermer</button></div>';
   h += '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">'+steps.map((s,i)=>'<span class="chip '+(P.step===i+1?'acc':(P.step>i+1?'good':''))+'" style="justify-content:center;min-width:0;overflow:hidden;text-overflow:ellipsis;padding:5px 4px">'+(i+1)+' '+s+'</span>').join("")+'</div>';
   if (P.step===1){
-    h += '<section class="card"><span class="eyebrow">Séance prévue</span><div class="spread"><div class="big">'+esc(P.seance==="repos"?"Repos":P.seance)+'</div></div>';
+    h += '<section class="card"><span class="eyebrow">Séance prévue</span><div class="spread"><div class="big cap">'+esc(P.seance==="repos"?"Repos":P.seance)+'</div></div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">'+seancesDispo().map(n=>'<button class="btn sm'+(n.toLowerCase()===P.seance?' pri':'')+'" data-act="prepSeance" data-k="'+esc(n.toLowerCase())+'">'+esc(n)+'</button>').join("")+'</div>';
     if (P.seance!=="repos") h += seg("prepSet", P.jyvais?"oui":"non", [["oui","J'y vais"],["non","J'y vais pas"]], ' data-f="jyvais"');
     h += '</section><section class="card"><span class="eyebrow">École</span><div class="mid">'+esc(P.lieu)+'</div>'+
       (P.objectifs.length?'<div class="small">'+P.objectifs.map(o=>"· "+esc(o.texte)).join("<br>")+'</div>':'<div class="small muted">Aucun objectif pour ce jour.</div>')+'</section>';
@@ -1621,6 +1646,7 @@ Object.assign(ACT, {
     if (P.step===4 && !P.taches){ P.step = 3; render(); prepBuild(); return; }
     renderKeepScroll=false; window.scrollTo(0,0); render(); },
   prepAddAutre(){ const P = S.prep; prepReadInputs(); const h = val("pr-ah"), t = val("pr-at").trim(); if (!t) return toast("Donne un titre.", true); P.autres.push({heure:h, titre:t}); render(); },
+  prepSeance(d){ const P = S.prep; P.seance = d.k; P.jyvais = d.k!=="repos"; P.taches = null; render(); },
   prepEdit(d){ S.prep.edit = +d.i; render(); },
   prepEditOk(d){ const P = S.prep, t = P.taches[+d.i], ti = val("pe-titre").trim(); if (!ti) return toast("Donne un titre.", true);
     t.debut = val("pe-debut") || t.debut; t.fin = val("pe-fin") || null; if (!t.fin) delete t.fin; t.titre = ti; P.edit = -1; render(); },
@@ -1635,6 +1661,7 @@ Object.assign(ACT, {
     const old = dayDoc(P.date); const libres = (old.taches||[]).filter(x=>x.type==="libre" && !P.taches.some(y=>y.titre===x.titre && y.debut===x.debut));
     const doc = {date:P.date, statut:"valide", sousTitre:sousTitre(P.jyvais?P.seance:null, P.salle, P.lieu, P.chien), reveil:P.reveil,
       seance:{type:P.seance, jyvais:P.jyvais, salle:P.salle}, chien:P.chien?{trott:P.trott}:null, ecole:{lieu:P.lieu}, ezekiel:P.ez==="rien"?null:{action:P.ez, heure:P.ezHeure}, taches:P.taches.concat(libres)};
+    const sp0 = splitFor(P.date); if (!sp0 || sp0.nom.toLowerCase()!==P.seance){ const nom = seancesDispo().find(n=>n.toLowerCase()===P.seance) || P.seance; ACT.seanceSet({d:P.date, k:nom}); }
     try { await saveDay(doc); if (P.jyvais){ const cfg = {...(S.app.agenda||{})}; delete cfg.id; cfg.derniereSalle = P.salle; put("app/agenda", cfg).catch(()=>{}); }
       toast("Journée enregistrée"); S.ui.agendaDay = P.date; S.prep = null; S.view = "agenda"; render(); } catch(e){} }
 });
@@ -1792,7 +1819,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261028211610";
+const APP_VERSION = "20261029161830";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
