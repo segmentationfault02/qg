@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-v8/kw7qaczGxm1bhFndizbl9TrWXtiKwIZS/EQXLW+8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-ZY7nyLRF0Tu12BuuDcAhDwlVM8L8JwR3L+iYonwEg8Y='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -94,6 +94,10 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .seg button{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;appearance:none;border:0;background:transparent;border-radius:8px;padding:8px 6px;font-size:13.5px;font-weight:600;color:var(--muted);min-height:36px}
 .seg-s button{font-size:12px;padding:8px 2px}
 .seg-g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.viewer{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.viewer-bar{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line)}
+.viewer-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
+.viewer-body img{width:100%;height:auto;background:#fff;border-radius:6px}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.15)}
 
 .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--muted);white-space:nowrap}
@@ -1746,10 +1750,30 @@ async function doExport(){
 /* ================= MODULES PRIVÉS ================= */
 // Des modules personnels peuvent être stockés dans la base (accès réservé au propriétaire) et chargés après connexion.
 const EXT = {tabs:[], blocs:[], charges:{}};
+/* fichiers privés (stockage réservé au propriétaire) */
+async function fichierEnvoyer(path, file){ const {error} = await sb.storage.from("fichiers").upload(path, file, {upsert:true, contentType:file.type||"application/octet-stream"}); if (error) throw error; return path; }
+async function fichierBlob(path){ const {data, error} = await sb.storage.from("fichiers").download(path); if (error) throw error; return data; }
+async function fichierSuppr(path){ try { await sb.storage.from("fichiers").remove([path]); } catch(e){} }
+async function voirFichier(path, titre){
+  const ov = document.createElement("div"); ov.className = "viewer";
+  ov.innerHTML = '<div class="viewer-bar"><b class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(titre||"Document")+'</b><a class="btn sm" id="vw-dl" style="display:none">Télécharger</a><button class="btn sm pri" id="vw-x">Fermer</button></div><div class="viewer-body" id="vw-b"><div class="empty">Chargement…</div></div>';
+  document.body.appendChild(ov); let url = null;
+  const fermer = () => { if (url) URL.revokeObjectURL(url); ov.remove(); }; ov.querySelector("#vw-x").onclick = fermer;
+  try { const blob = await fichierBlob(path); url = URL.createObjectURL(blob); const dl = ov.querySelector("#vw-dl"); dl.href = url; dl.download = path.split("/").pop(); dl.style.display = "";
+    const B = ov.querySelector("#vw-b");
+    if (/pdf/.test(blob.type) || /\.pdf$/i.test(path)){
+      if (!window.pdfjsLib) await loadScript("vendor/pdf/pdf.min.js");
+      const L = window.pdfjsLib; L.GlobalWorkerOptions.workerSrc = new URL("vendor/pdf/pdf.worker.min.js", location.href).href;
+      const doc = await L.getDocument({data:new Uint8Array(await blob.arrayBuffer()), isEvalSupported:false}).promise; B.innerHTML = "";
+      for (let n=1; n<=doc.numPages && ov.isConnected; n++){ const page = await doc.getPage(n), vp = page.getViewport({scale:2}), cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+        await page.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; const im = new Image(); im.src = cv.toDataURL("image/jpeg", .85); im.alt = "Page "+n; B.appendChild(im); }
+    } else B.innerHTML = '<img src="'+url+'" alt="">';
+  } catch(e){ ov.querySelector("#vw-b").innerHTML = '<div class="banner">Impossible d\'ouvrir le fichier.</div>'; }
+}
 function loadExt(){
   Object.keys(Store.rows).filter(p=>p.startsWith("ext/")).forEach(p=>{ const m = Store.rows[p]; if (!m || typeof m.code!=="string" || EXT.charges[p]===m.v) return;
     EXT.charges[p] = m.v;
-    window.__qgExt = { S, Store, EXT, VIEWS, SHEETS, ACT, render, renderSheet, openSheet, closeSheet, put, rm, toast, esc, fld, seg, chk, sheetBtns, val, num, uid, r1, sum, today, addDays, fShort, fDay, parseYmd, normTxt, ocrWorker, prepImage, lirePdf,
+    window.__qgExt = { S, Store, EXT, VIEWS, SHEETS, ACT, render, renderSheet, openSheet, closeSheet, put, rm, toast, esc, fld, seg, chk, sheetBtns, val, num, uid, r1, sum, today, addDays, fShort, fDay, parseYmd, normTxt, ocrWorker, prepImage, lirePdf, fichierEnvoyer, fichierSuppr, voirFichier,
       watch(col){ (Store.subs[col] = Store.subs[col]||[]).push(()=>{ S.loaded[col] = true; render(); }); } };
     const url = URL.createObjectURL(new Blob([m.code], {type:"text/javascript"})); const sc = document.createElement("script");
     sc.src = url; sc.onload = sc.onerror = () => { URL.revokeObjectURL(url); delete window.__qgExt; render(); }; document.head.appendChild(sc); });
@@ -1872,7 +1896,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261031134732";
+const APP_VERSION = "20261031165032";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
