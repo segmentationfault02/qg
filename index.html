@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-tAmxl6nqGgGv6KeOCamVzstlZ5jnYX+V6p8VIk61LkM='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-3RBhAc306RI04uPgeVL5x1uEyeY869lTyKIOIwoaN8k='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1036,7 +1036,7 @@ SHEETS.repas = { html(ds){
     S.sheet.draft = r ? JSON.parse(JSON.stringify(r)) : {heure:"", nom:"", items:[], fait:true}; }
   const dr = S.sheet.draft; const isNew = !(ds.i!=null && ds.i!=="");
   return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · '+fShort(S.ui.jourDiet)+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
-    mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+sheetBtns(!isNew); },
+    mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+(!isNew && !S.sheet.fp && !S.sheet.nf ? '<button type="button" class="btn full" data-act="repasDup" data-i="'+esc(ds.i)+'">Dupliquer ce repas</button>' : '')+sheetBtns(!isNew); },
   async save(ds){ const dr = S.sheet.draft; syncDraft(); dr.nom = (dr.nom||"").trim() || "Repas"; dr.items = dr.items.filter(x=>x.q>0);
     const d = S.ui.jourDiet, j = journalOf(d);
     if (ds.i!=null && ds.i!==""){ j.repas[+ds.i] = {...j.repas[+ds.i], ...dr, mod:true}; }
@@ -1212,6 +1212,10 @@ const ACT = {
   async jFait(d){ const day = S.ui.jourDiet, j = journalOf(day); j.repas[+d.i].fait = !j.repas[+d.i].fait; try{ await saveJournal(day, j); }catch(e){} },
   async jAll(){ const day = S.ui.jourDiet, j = journalOf(day); const all = j.repas.every(r=>r.fait); j.repas.forEach(r=>{ r.fait = !all; }); try{ await saveJournal(day, j); toast(all?"Repas décochés":"Journée validée"); }catch(e){} },
   riDel(d){ syncDraft(); S.sheet.draft.items.splice(+d.k,1); renderSheet(); },
+  async repasDup(d){ syncDraft(); const day = S.ui.jourDiet, j = journalOf(day), dr = S.sheet.draft;
+    const copie = {...JSON.parse(JSON.stringify(dr)), id:uid(), ajoute:true, fait:false}; delete copie.mod;
+    copie.items = copie.items.filter(x=>x.q>0); j.repas.splice(+d.i+1, 0, copie); sortRepas(j.repas);
+    try { await saveJournal(day, j); } catch(e){ return; } closeSheet(); toast("Repas dupliqué : « "+(copie.nom||"Repas")+" » ajouté une deuxième fois"); },
   fpOpen(d){ syncDraft(); keepRepas(); S.sheet.fp = {k:d.k, q:"", cat:""}; renderSheet(); setTimeout(()=>{ const e = document.getElementById("fp-q"); if (e) e.focus(); }, 80); },
   fpClose(){ S.sheet.fp = null; renderSheet(); },
   fpCat(d){ S.sheet.fp.cat = d.k; S.sheet.fp.q = val("fp-q"); renderSheet(); },
@@ -1819,7 +1823,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261029191642";
+const APP_VERSION = "20261031094704";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
