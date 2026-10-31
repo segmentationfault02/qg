@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-rp0CejAZDhHC1bSOC5paqJdfWFKVEbeVqod5AiZFGC4='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-Q2Me0seQrKVu9srb1bHTelgFC+lwDIaJwOMz4NYpMXI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1000,6 +1000,15 @@ function foodOptions(F, selId){
     L.sort((x,y)=>String(x[1].nom).localeCompare(String(y[1].nom),"fr")).map(([id,a])=>'<option value="'+esc(id)+'"'+(id===selId?" selected":"")+'>'+esc(a.nom)+'</option>').join("")+'</optgroup>').join("");
 }
 const normTxt = t => String(t||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+function fpEquiv(id, a){
+  const fp = S.sheet.fp, dr = S.sheet.draft; if (!fp || fp.k==="add" || !dr || !dr.items[+fp.k]) return null;
+  const it = dr.items[+fp.k], o = food(it.a); if (!o || id===it.a) return null;
+  const m = itemMacros(it); let key = {"Protéines":"p","Glucides":"g","Lipides":"l"}[foodCat(o)] || "kcal"; if (!(m[key]>=1)) key = "kcal";
+  const unit = a.unite==="portion" ? (a.portion||100)/100 : 1/100, per = (a[key]||0)*unit; if (!(per>0)) return null;
+  let q = m[key]/per; q = a.unite==="portion" ? Math.max(0.5, Math.round(q*2)/2) : q<20 ? Math.max(1, Math.round(q)) : Math.round(q/5)*5;
+  const n = itemMacros({a:id, q}); return {q, key, n, dk:n.kcal-m.kcal};
+}
+function rizCuit(q){ const L = (S.riz||[]).filter(x=>x.ratio>0); if (!L.length) return null; const r = L.reduce((t,x)=>t+x.ratio,0)/L.length; return Math.round(q*r/5)*5; }
 function fpResults(){
   const F = allFoods(), fp = S.sheet.fp || {}, q = normTxt(fp.q).trim(), mots = q.split(/\s+/).filter(Boolean);
   let L = Object.entries(F).filter(([id,a])=>(!fp.cat || foodCat(a)===fp.cat) && mots.every(m=>normTxt(a.nom).includes(m)));
@@ -1007,10 +1016,14 @@ function fpResults(){
   if (!L.length) return '<div class="small muted">Aucun aliment trouvé. Crée-le avec « Nouvel aliment ».</div>';
   const groups = {}; L.slice(0,60).forEach(([id,a])=>{ (groups[foodCat(a)] = groups[foodCat(a)]||[]).push([id,a]); });
   return ["Protéines","Glucides","Lipides"].filter(g=>groups[g]).map(g=>'<span class="eyebrow" style="margin-top:4px">'+g+'</span>'+groups[g].map(([id,a])=>
-    '<button type="button" class="btn sm ghost" style="justify-content:space-between;text-align:left;gap:8px" data-act="fpPick" data-id="'+esc(id)+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(a.nom)+'</span><span class="small muted num" style="white-space:nowrap">'+(a.unite==="portion"?Math.round(a.kcal*(a.portion||100)/100)+' kcal / portion':Math.round(a.kcal)+' kcal · P '+r1(a.p))+'</span></button>').join("")).join("");
+    { const eq = fpEquiv(id, a); if (eq){ const ck = /riz/i.test(a.nom) && /cru/i.test(a.nom) ? rizCuit(eq.q) : null; const KL = {p:"prot.",g:"gluc.",l:"lip.",kcal:"kcal"}[eq.key];
+      return '<button type="button" class="btn sm ghost" style="flex-direction:column;align-items:stretch;text-align:left;gap:2px" data-act="fpPick" data-id="'+esc(id)+'" data-q="'+eq.q+'"><span style="display:flex;justify-content:space-between;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(a.nom)+'</span><b class="num" style="white-space:nowrap">≈ '+String(eq.q).replace(".",",")+uLab(a,eq.q).replace(/^(?! )/," ")+(ck?' <span class="muted">('+ck+' g cuit)</span>':'')+'</b></span>'+
+        '<span class="small muted num">mêmes '+KL+' · P '+r1(eq.n.p)+' G '+r1(eq.n.g)+' L '+r1(eq.n.l)+' · '+Math.round(eq.n.kcal)+' kcal'+(Math.round(eq.dk)?' ('+(eq.dk>0?"+":"")+Math.round(eq.dk)+')':'')+'</span></button>'; }
+    return '<button type="button" class="btn sm ghost" style="justify-content:space-between;text-align:left;gap:8px" data-act="fpPick" data-id="'+esc(id)+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(a.nom)+'</span><span class="small muted num" style="white-space:nowrap">'+(a.unite==="portion"?Math.round(a.kcal*(a.portion||100)/100)+' kcal / portion':Math.round(a.kcal)+' kcal · P '+r1(a.p))+'</span></button>'; }).join("")).join("");
 }
 function fpHtml(){ const fp = S.sheet.fp;
   return '<div class="card" style="gap:8px;background:var(--surface2)"><div class="spread"><span class="eyebrow">'+(fp.k==="add"?"Ajouter un aliment":"Remplacer l\'aliment")+'</span><button type="button" class="btn sm ghost" data-act="fpClose">Annuler</button></div>'+
+    (fp.k!=="add" && S.sheet.draft.items[+fp.k] ? (()=>{ const it = S.sheet.draft.items[+fp.k], o = food(it.a)||{nom:it.a}, m = itemMacros(it); return '<div class="small muted">À la place de <b>'+it.q+uLab(o,it.q).replace(/^(?! )/," ")+' '+esc(o.nom)+'</b> (P '+r1(m.p)+' G '+r1(m.g)+' L '+r1(m.l)+' · '+Math.round(m.kcal)+' kcal). La quantité proposée donne à peu près les mêmes macros principales et s\'applique quand tu choisis.</div>'; })() : '')+
     '<input class="inp" id="fp-q" placeholder="Rechercher : poulet, riz, skyr…" autocomplete="off" value="'+esc(fp.q||"")+'">'+
     seg("fpCat", fp.cat||"", [["","Tous"],["Protéines","Protéines"],["Glucides","Glucides"],["Lipides","Lipides"]])+
     '<div id="fp-res" class="stack" style="gap:4px;max-height:46vh;overflow-y:auto">'+fpResults()+'</div>'+
@@ -1217,12 +1230,12 @@ const ACT = {
     const copie = {...JSON.parse(JSON.stringify(dr)), id:uid(), ajoute:true, fait:false}; delete copie.mod;
     copie.items = copie.items.filter(x=>x.q>0); j.repas.splice(+d.i+1, 0, copie); sortRepas(j.repas);
     try { await saveJournal(day, j); } catch(e){ return; } closeSheet(); toast("Repas dupliqué : « "+(copie.nom||"Repas")+" » ajouté une deuxième fois"); },
-  fpOpen(d){ syncDraft(); keepRepas(); S.sheet.fp = {k:d.k, q:"", cat:""}; renderSheet(); setTimeout(()=>{ const e = document.getElementById("fp-q"); if (e) e.focus(); }, 80); },
+  fpOpen(d){ syncDraft(); keepRepas(); const it0 = d.k!=="add" && S.sheet.draft.items[+d.k], f0 = it0 && food(it0.a); S.sheet.fp = {k:d.k, q:"", cat: f0 ? foodCat(f0) : ""}; renderSheet(); setTimeout(()=>{ const e = document.getElementById("fp-q"); if (e) e.focus(); }, 80); },
   fpClose(){ S.sheet.fp = null; renderSheet(); },
   fpCat(d){ S.sheet.fp.cat = d.k; S.sheet.fp.q = val("fp-q"); renderSheet(); },
   fpPick(d){ const fp = S.sheet.fp, dr = S.sheet.draft;
     if (fp.k==="add"){ const a = food(d.id); dr.items.push({a:d.id, q:a && a.unite==="portion" ? 1 : 100}); S.sheet.focusLast = true; }
-    else dr.items[+fp.k].a = d.id;
+    else { dr.items[+fp.k].a = d.id; if (d.q) dr.items[+fp.k].q = +d.q; }
     S.sheet.fp = null; renderSheet(); mealDraftTotal();
     if (S.sheet.focusLast){ S.sheet.focusLast = false; setTimeout(()=>{ const e = document.getElementById("ri-q-"+(dr.items.length-1)); if (e){ e.focus(); e.select(); } }, 80); } },
   nfOpen(){ S.sheet.nf = true; S.sheet.nfv = {nom:(S.sheet.fp&&S.sheet.fp.q)||""}; S.sheet.fp = null; renderSheet(); },
@@ -1824,7 +1837,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261031095221";
+const APP_VERSION = "20261031095534";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
