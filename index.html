@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-k5XwjZFHzKm6+S4Fb8GfB/XWpOGXE5GsyQ5pwlHRVoo='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-v8/kw7qaczGxm1bhFndizbl9TrWXtiKwIZS/EQXLW+8='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -883,6 +883,25 @@ async function prepImage(file){
     const c = document.createElement("canvas"); c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
     const x = c.getContext("2d"); x.filter = "grayscale(1) contrast(1.4)"; x.drawImage(bmp, 0, 0, c.width, c.height);
     return await new Promise(r=>c.toBlob(b=>r(b||file), "image/png")); } catch(e){ return file; } }
+async function lirePdf(file, onProgress){
+  if (!window.pdfjsLib) await loadScript("vendor/pdf/pdf.min.js");
+  const L = window.pdfjsLib; L.GlobalWorkerOptions.workerSrc = new URL("vendor/pdf/pdf.worker.min.js", location.href).href;
+  const doc = await L.getDocument({data:new Uint8Array(await file.arrayBuffer()), isEvalSupported:false, disableFontFace:true}).promise;
+  let text = "";
+  for (let n=1; n<=doc.numPages; n++){ const page = await doc.getPage(n); const c = await page.getTextContent(); const lines = {};
+    c.items.forEach(it=>{ if (!it.str || !it.str.trim()) return; const y = Math.round(it.transform[5]/3); (lines[y] = lines[y]||[]).push({x:it.transform[4], s:it.str}); });
+    text += Object.keys(lines).map(Number).sort((a,b)=>b-a).map(y=>lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join("  ")).join("\n")+"\n";
+    if (onProgress) onProgress(Math.round(n/doc.numPages*50)); }
+  if (text.replace(/\s/g,"").length >= 30) return text;
+  // PDF scanné (image) : on lit chaque page par OCR
+  let w = null; text = "";
+  try { w = await ocrWorker();
+    for (let n=1; n<=doc.numPages; n++){ const page = await doc.getPage(n), vp = page.getViewport({scale:2.2}), cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+      await page.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; const blob = await new Promise(r=>cv.toBlob(r,"image/png"));
+      const r = await w.recognize(blob); text += r.data.text+"\n"; if (onProgress) onProgress(50+Math.round(n/doc.numPages*50)); } }
+  finally { if (w) w.terminate(); }
+  return text;
+}
 async function ocrWorker(onProgress){
   if (!window.Tesseract) await loadScript("vendor/ocr/tesseract.min.js");
   const base = new URL("vendor/ocr/", location.href).href;
@@ -1730,7 +1749,7 @@ const EXT = {tabs:[], blocs:[], charges:{}};
 function loadExt(){
   Object.keys(Store.rows).filter(p=>p.startsWith("ext/")).forEach(p=>{ const m = Store.rows[p]; if (!m || typeof m.code!=="string" || EXT.charges[p]===m.v) return;
     EXT.charges[p] = m.v;
-    window.__qgExt = { S, Store, EXT, VIEWS, SHEETS, ACT, render, renderSheet, openSheet, closeSheet, put, rm, toast, esc, fld, seg, chk, sheetBtns, val, num, uid, r1, sum, today, addDays, fShort, fDay, parseYmd, normTxt, ocrWorker, prepImage,
+    window.__qgExt = { S, Store, EXT, VIEWS, SHEETS, ACT, render, renderSheet, openSheet, closeSheet, put, rm, toast, esc, fld, seg, chk, sheetBtns, val, num, uid, r1, sum, today, addDays, fShort, fDay, parseYmd, normTxt, ocrWorker, prepImage, lirePdf,
       watch(col){ (Store.subs[col] = Store.subs[col]||[]).push(()=>{ S.loaded[col] = true; render(); }); } };
     const url = URL.createObjectURL(new Blob([m.code], {type:"text/javascript"})); const sc = document.createElement("script");
     sc.src = url; sc.onload = sc.onerror = () => { URL.revokeObjectURL(url); delete window.__qgExt; render(); }; document.head.appendChild(sc); });
@@ -1853,7 +1872,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261031134647";
+const APP_VERSION = "20261031134732";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
