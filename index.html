@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-3RBhAc306RI04uPgeVL5x1uEyeY869lTyKIOIwoaN8k='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-rp0CejAZDhHC1bSOC5paqJdfWFKVEbeVqod5AiZFGC4='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -326,9 +326,10 @@ const sortRepas = L => L.sort((a,b)=>(a.heure||"99:99")<(b.heure||"99:99")?-1:(a
 async function saveJournal(d, j){ const o = {...j, date:d, maj:new Date().toISOString()}; delete o.id; await put("journal/"+d, o); }
 function itemMacros(it){
   const a = food(it.a); if (!a) return {kcal:0,p:0,g:0,l:0};
-  const f = it.q/100;
+  const f = a.unite==="portion" ? it.q*(a.portion||100)/100 : it.q/100;
   return {kcal:a.kcal*f, p:a.p*f, g:a.g*f, l:a.l*f};
 }
+const uLab = (a, q) => a && a.unite==="portion" ? " portion"+(q>1?"s":"") : ((a&&a.unite)||"g");
 function addM(x,y){ return {kcal:x.kcal+y.kcal,p:x.p+y.p,g:x.g+y.g,l:x.l+y.l}; }
 const ZERO = {kcal:0,p:0,g:0,l:0};
 function mealMacros(m){ return (m.items||[]).map(itemMacros).reduce(addM,ZERO); }
@@ -612,7 +613,7 @@ VIEWS.diet = { title:"Diet", body(){
     h += '</section>';
     h += '<section class="card">'+((day&&day.repas)||[]).map(r=>{ const mm = mealMacros(r);
       return '<div class="meal"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
-        (r.items||[]).map(it=>{ const a=food(it.a)||{nom:it.a,unite:"g"}; const im=itemMacros(it); return '<div class="food"><span>'+esc(a.nom)+(it.etat?' <span class="muted small">('+esc(it.etat)+')</span>':'')+'</span><span class="g num">'+it.q+' '+(a.unite||"g")+'</span><span class="k num small">'+Math.round(im.kcal)+' kcal</span></div>'; }).join("")+
+        (r.items||[]).map(it=>{ const a=food(it.a)||{nom:it.a,unite:"g"}; const im=itemMacros(it); return '<div class="food"><span>'+esc(a.nom)+(it.etat?' <span class="muted small">('+esc(it.etat)+')</span>':'')+'</span><span class="g num">'+it.q+uLab(a,it.q)+'</span><span class="k num small">'+Math.round(im.kcal)+' kcal</span></div>'; }).join("")+
         '<div class="macros"><span>P <b class="num">'+r1(mm.p)+'</b></span><span>G <b class="num">'+r1(mm.g)+'</b></span><span>L <b class="num">'+r1(mm.l)+'</b></span>'+(r.note?'<span>'+esc(r.note)+'</span>':'')+'</div></div>'; }).join("")+'</section>';
     h += '<div class="hint" style="text-align:center">Pour changer ta diet, dis-le à Claude : il met l\'app à jour et garde l\'historique.</div>';
     return h;
@@ -696,7 +697,7 @@ function journalView(){
   h += (j.repas||[]).map((r,i)=>{ const mm = mealMacros(r);
     return '<div class="meal'+(r.fait?' done':'')+'"><div class="row" style="align-items:flex-start">'+chk(r.fait,"jFait",'data-i="'+i+'"')+
       '<div class="grow tap" data-act="sheet" data-s="repas" data-i="'+i+'" style="cursor:pointer;min-width:0"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span class="t" style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
-      '<div class="small muted" style="margin-top:2px">'+(r.items||[]).map(it=>{ const a = food(it.a)||{nom:it.a,unite:"g"}; return esc(a.nom)+' '+it.q+(a.unite||"g"); }).join(" · ")+'</div>'+
+      '<div class="small muted" style="margin-top:2px">'+(r.items||[]).map(it=>{ const a = food(it.a)||{nom:it.a,unite:"g"}; return esc(a.nom)+' '+it.q+uLab(a,it.q); }).join(" · ")+'</div>'+
       ((r.mod||r.ajoute)?'<div class="row" style="gap:6px;margin-top:4px">'+(r.ajoute?'<span class="chip warn">ajouté</span>':'')+(r.mod?'<span class="chip acc">modifié</span>':'')+'</div>':'')+'</div></div></div>'; }).join("") || '<div class="empty">Aucun repas ce jour.</div>';
   h += '<div class="row"><button class="btn grow" data-act="jAll">Tout valider</button><button class="btn pri grow" data-act="sheet" data-s="repas">+ Repas</button></div></section>';
   h += '<div class="hint" style="text-align:center">Touche un repas pour changer les grammes, ajouter ou retirer un aliment. La template ne bouge pas.</div>';
@@ -1006,7 +1007,7 @@ function fpResults(){
   if (!L.length) return '<div class="small muted">Aucun aliment trouvé. Crée-le avec « Nouvel aliment ».</div>';
   const groups = {}; L.slice(0,60).forEach(([id,a])=>{ (groups[foodCat(a)] = groups[foodCat(a)]||[]).push([id,a]); });
   return ["Protéines","Glucides","Lipides"].filter(g=>groups[g]).map(g=>'<span class="eyebrow" style="margin-top:4px">'+g+'</span>'+groups[g].map(([id,a])=>
-    '<button type="button" class="btn sm ghost" style="justify-content:space-between;text-align:left;gap:8px" data-act="fpPick" data-id="'+esc(id)+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(a.nom)+'</span><span class="small muted num" style="white-space:nowrap">'+Math.round(a.kcal)+' kcal · P '+r1(a.p)+'</span></button>').join("")).join("");
+    '<button type="button" class="btn sm ghost" style="justify-content:space-between;text-align:left;gap:8px" data-act="fpPick" data-id="'+esc(id)+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(a.nom)+'</span><span class="small muted num" style="white-space:nowrap">'+(a.unite==="portion"?Math.round(a.kcal*(a.portion||100)/100)+' kcal / portion':Math.round(a.kcal)+' kcal · P '+r1(a.p))+'</span></button>').join("")).join("");
 }
 function fpHtml(){ const fp = S.sheet.fp;
   return '<div class="card" style="gap:8px;background:var(--surface2)"><div class="spread"><span class="eyebrow">'+(fp.k==="add"?"Ajouter un aliment":"Remplacer l\'aliment")+'</span><button type="button" class="btn sm ghost" data-act="fpClose">Annuler</button></div>'+
@@ -1026,7 +1027,7 @@ function mealDraftItemsHtml(dr){
   if (S.sheet.fp) return fpHtml();
   const rows = (dr.items||[]).map((it,k)=>{ const a = food(it.a)||{nom:it.a,unite:"g"}; const m = itemMacros(it);
     return '<div class="stack" style="gap:6px;padding:8px 0;border-top:1px solid var(--line)"><button type="button" class="btn sm" style="justify-content:space-between;text-align:left" data-act="fpOpen" data-k="'+k+'"><span>'+esc(a.nom)+'</span><span class="small muted">changer</span></button>'+
-      '<div class="row" style="gap:8px"><input class="inp num" style="width:96px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité"><span class="small muted">'+(a.unite||"g")+'</span><span class="grow small num muted" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:34px;height:34px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer cet aliment">×</button></div></div>'; }).join("");
+      '<div class="row" style="gap:8px"><input class="inp num" style="width:96px" id="ri-q-'+k+'" data-k="'+k+'" inputmode="decimal" value="'+esc(it.q)+'" aria-label="Quantité"><span class="small muted">'+uLab(a,2).trim()+'</span><span class="grow small num muted" id="ri-k-'+k+'">'+Math.round(m.kcal)+' kcal</span><button type="button" class="icon-btn" style="width:34px;height:34px;font-size:15px" data-act="riDel" data-k="'+k+'" aria-label="Retirer cet aliment">×</button></div></div>'; }).join("");
   return '<div class="stack" id="ri-items">'+(rows||'<div class="small muted">Aucun aliment pour l\'instant.</div>')+'</div><button type="button" class="btn full" data-act="fpOpen" data-k="add">+ Ajouter un aliment</button>';
 }
 function mealDraftTotal(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const m = mealMacros(dr); const el = document.getElementById("ri-tot");
@@ -1220,7 +1221,7 @@ const ACT = {
   fpClose(){ S.sheet.fp = null; renderSheet(); },
   fpCat(d){ S.sheet.fp.cat = d.k; S.sheet.fp.q = val("fp-q"); renderSheet(); },
   fpPick(d){ const fp = S.sheet.fp, dr = S.sheet.draft;
-    if (fp.k==="add"){ const a = food(d.id); dr.items.push({a:d.id, q:a && a.unite==="ml" ? 100 : 100}); S.sheet.focusLast = true; }
+    if (fp.k==="add"){ const a = food(d.id); dr.items.push({a:d.id, q:a && a.unite==="portion" ? 1 : 100}); S.sheet.focusLast = true; }
     else dr.items[+fp.k].a = d.id;
     S.sheet.fp = null; renderSheet(); mealDraftTotal();
     if (S.sheet.focusLast){ S.sheet.focusLast = false; setTimeout(()=>{ const e = document.getElementById("ri-q-"+(dr.items.length-1)); if (e){ e.focus(); e.select(); } }, 80); } },
@@ -1823,7 +1824,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261031094704";
+const APP_VERSION = "20261031095221";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
