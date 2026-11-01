@@ -140,7 +140,9 @@ async function hevyToday(p: { dossier: string; seance: string }) {
   }
   const want = String(p.seance).toUpperCase();
   const inFolder = all.filter((r) => r.folder_id === folder.id);
-  const routine = inFolder.find((r) => String(r.title).toUpperCase().includes(want));
+  const titre = (r: any) => String(r.title).trim().toUpperCase();
+  const routine = inFolder.find((r) => titre(r) === want)
+    || inFolder.filter((r) => titre(r).includes(want)).sort((a, b) => titre(a).length - titre(b).length)[0];
   if (!routine) return { erreur: "seance_introuvable", seances: inFolder.map((r) => r.title) };
   let derniere: any = null;
   try {
@@ -163,7 +165,7 @@ async function hevyToday(p: { dossier: string; seance: string }) {
 }
 
 async function hevyDurees() {
-  const types = ["pull", "legs", "push", "lower", "upper"];
+  const types = ["upper volume", "lower volume", "pull", "legs", "push", "lower", "upper"];
   const parType: Record<string, number[]> = {};
   for (let page = 1; page <= 3; page++) {
     const r = await hevy(`/v1/workouts?page=${page}&pageSize=10`);

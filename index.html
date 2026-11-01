@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-ZY7nyLRF0Tu12BuuDcAhDwlVM8L8JwR3L+iYonwEg8Y='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-56TCCipX6Hxd1yDonL+decT2t7yI4XYYqYvSuxF/IVQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -287,11 +287,20 @@ function toast(msg, err){
 }
 
 /* ---------- données dérivées ---------- */
+// Séance prévue par le programme : cycle de N jours s'il existe, sinon jour de la semaine.
+function planFor(dateS){
+  const t = S.app.training || {}; const c = t.cycle;
+  if (c && c.debut && Array.isArray(c.seances) && c.seances.length && dateS >= c.debut){
+    const n = c.seances.length, i = ((Math.round((parseYmd(dateS)-parseYmd(c.debut))/86400000) % n) + n) % n, nom = c.seances[i];
+    const base = Object.values(t.jours||{}).find(j=>j && j.nom && j.nom.toLowerCase()===nom.toLowerCase()) || {};
+    return {...base, nom, jourCycle:i+1, cycleN:n}; }
+  return (t.jours||{})[String(dow(dateS))] || null;
+}
 function splitFor(dateS){
   const t = S.app.training; if (!t || !t.jours) return null;
   const ch = (t.changes||{})[dateS];
   if (ch){ const base = Object.values(t.jours).find(j=>j && j.nom && j.nom.toLowerCase()===ch.toLowerCase()) || {}; return {...base, nom:ch, change:true}; }
-  return t.jours[String(dow(dateS))] || null;
+  return planFor(dateS);
 }
 function dayType(dateS){
   const sp = splitFor(dateS);
@@ -408,10 +417,10 @@ function weightChart(list, days){
 const VIEWS = {};
 
 /* ---------- ACCUEIL ---------- */
-function seancesDispo(){ const tr = S.app.training||{}; const L = []; Object.values(tr.jours||{}).forEach(j=>{ if (j && j.nom && !L.some(x=>x.toLowerCase()===j.nom.toLowerCase())) L.push(j.nom); });
+function seancesDispo(){ const tr = S.app.training||{}; const L = []; Object.values(tr.jours||{}).map(j=>j&&j.nom).concat((tr.cycle&&tr.cycle.seances)||[]).forEach(n=>{ if (n && !L.some(x=>x.toLowerCase()===n.toLowerCase())) L.push(n); });
   if (!L.some(x=>x.toLowerCase()==="repos")) L.push("Repos"); return L.sort((a,b)=>(a.toLowerCase()==="repos")-(b.toLowerCase()==="repos")); }
 function seanceChoix(d){ const sp = splitFor(d), cur = sp ? sp.nom.toLowerCase() : "";
-  const def = ((S.app.training||{}).jours||{})[String(dow(d))];
+  const def = planFor(d);
   return '<div class="stack" style="gap:6px"><div class="small muted">Qu\'est-ce que tu fais '+(d===today()?"aujourd\'hui":fShort(d))+' ?</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">'+
     seancesDispo().map(n=>'<button class="btn sm'+(n.toLowerCase()===cur?' pri':'')+'" data-act="seanceSet" data-d="'+d+'" data-k="'+esc(n)+'">'+esc(n)+'</button>').join("")+'</div>'+
     (sp && sp.change ? '<button class="btn sm ghost" data-act="seanceSet" data-d="'+d+'" data-k="">Remettre le programme ('+esc(def?def.nom:"?")+')</button>' : '')+'</div>'; }
@@ -443,7 +452,9 @@ VIEWS.accueil = { title:"QG", body(){
     if (tr.rappel) h += '<div class="small">'+esc(tr.rappel)+'</div>';
     h += hevyBlock(t, sp.nom);
   }
-  h += '<div class="row wrap-r small muted" style="gap:6px">'+[1,2,3,4,5,6,0].map(i=>{ const j=(tr.jours||{})[String(i)]; const on=(i===dow(t)); return '<span class="chip'+(on?' acc':'')+'">'+DOWS[i]+' · '+esc(j?j.nom:"?")+'</span>'; }).join("")+'</div></section>';
+  const pc = planFor(t);
+  if (pc && pc.cycleN) h += '<div class="small muted">Jour '+pc.jourCycle+' sur '+pc.cycleN+' du cycle</div><div class="row wrap-r small muted" style="gap:6px">'+Array.from({length:pc.cycleN},(_,k)=>addDays(t,k)).map((d,k)=>{ const j = splitFor(d); return '<span class="chip'+(k===0?' acc':'')+'">'+(k===0?"auj.":k===1?"dem.":DOWS[dow(d)]+" "+parseYmd(d).getDate())+' · '+esc(j?j.nom:"?")+'</span>'; }).join("")+'</div></section>';
+  else h += '<div class="row wrap-r small muted" style="gap:6px">'+[1,2,3,4,5,6,0].map(i=>{ const j=(tr.jours||{})[String(i)]; const on=(i===dow(t)); return '<span class="chip'+(on?' acc':'')+'">'+DOWS[i]+' · '+esc(j?j.nom:"?")+'</span>'; }).join("")+'</div></section>';
 
   B.seance = h; h = "";
   // Poids
@@ -1172,7 +1183,7 @@ const ACT = {
   dietType(d){ S.ui.dietType=d.k; render(); },
   seanceEdit(){ S.ui.seanceEdit = !S.ui.seanceEdit; render(); },
   async seanceSet(d){ const day = d.d, tr = {...(S.app.training||{})}; delete tr.id; const avant = dayType(day);
-    const ch = {...(tr.changes||{})}; const def = (tr.jours||{})[String(dow(day))];
+    const ch = {...(tr.changes||{})}; const def = planFor(day);
     if (!d.k || (def && def.nom && def.nom.toLowerCase()===d.k.toLowerCase())) delete ch[day]; else ch[day] = d.k;
     Object.keys(ch).forEach(k=>{ if (k < addDays(today(),-30)) delete ch[k]; });
     tr.changes = ch; S.app.training = {...S.app.training, changes:ch};
@@ -1315,7 +1326,7 @@ const AR = {
   avanchets:{ref:"ch:1:sloid:93139",nom:"Vernier, Avanchets-Etang"}, blandonnet:{ref:"ch:1:sloid:87924",nom:"Vernier, Blandonnet"},
   aeroport:{ref:"8501026",nom:"Genève-Aéroport"}
 };
-const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, chien:30, trottServetteBouchet:5, trottSalleMere:20, trottMereAeroport:8, trottMereServette:15, trottServetteTrembley:4, piedServetteTrembley:8, durees:{pull:83, legs:82, push:96, lower:71, upper:101} };
+const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, chien:30, trottServetteBouchet:5, trottSalleMere:20, trottMereAeroport:8, trottMereServette:15, trottServetteTrembley:4, piedServetteTrembley:8, durees:{pull:83, legs:82, push:96, lower:71, upper:101, "upper volume":101, "lower volume":71} };
 const agCfg = () => Object.assign({}, AGD, (S.app.agenda||{}), {durees:Object.assign({}, AGD.durees, (S.app.agenda||{}).durees||{})});
 const toMin = h => { const m = /^(\d{1,2}):(\d{2})/.exec(h||""); return m ? +m[1]*60 + +m[2] : null; };
 const fromMin = m => { m = Math.max(0, Math.min(24*60-1, Math.round(m))); return pad(Math.floor(m/60))+":"+pad(m%60); };
@@ -1896,7 +1907,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261031165032";
+const APP_VERSION = "20261101133642";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
