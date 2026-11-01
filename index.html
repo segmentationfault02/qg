@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-56TCCipX6Hxd1yDonL+decT2t7yI4XYYqYvSuxF/IVQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-NxeE1ksyB/SrYXQGGIJZAucsae7xCoXy6V+I6qmAHgQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -325,16 +325,17 @@ function foodAny(id){ const d = S.app.diet; return ((d && d.aliments) || {})[id]
 function food(id){ return foodAny(id); }
 function tplDay(type){ const D = S.app.diet; return D && D.jours && D.jours[type]; }
 function journalDraft(d, type){ const t = tplDay(type) || {repas:[]};
-  return {date:d, type, repas:(t.repas||[]).map((r,i)=>({id:"t"+i, heure:r.heure||"", nom:r.nom, note:r.note||"", items:(r.items||[]).map(x=>({a:x.a, q:x.q, etat:x.etat||""})), fait:false}))}; }
+  return {date:d, type, base:(t.repas||[]).map(r=>{ const m = mealMacros(r); return {kcal:m.kcal, p:m.p, g:m.g, l:m.l}; }), repas:(t.repas||[]).map((r,i)=>({id:"t"+i, heure:r.heure||"", nom:r.nom, note:r.note||"", items:(r.items||[]).map(x=>({a:x.a, q:x.q, etat:x.etat||""})), fait:false}))}; }
 function journalOf(d){ return S.journal[d] ? JSON.parse(JSON.stringify(S.journal[d])) : journalDraft(d, dayType(d)); }
 function journalStats(j){ const all = (j.repas||[]); const eaten = all.filter(r=>r.fait);
-  const T = (tplDay(j.type)||{}).repas || [];
+  // Base figée à la création du journal (j.base) pour que modifier la template ne change pas une journée déjà commencée.
+  const TB = Array.isArray(j.base) ? j.base : ((tplDay(j.type)||{}).repas || []).map(mealMacros);
   const ids = new Set(all.map(r=>r.id));
-  const baseMange = eaten.map(r=>{ const m = /^t(\d+)$/.exec(r.id||""); return m && T[+m[1]] ? mealMacros(T[+m[1]]) : ZERO; })
-    .concat(T.map((r,i)=>ids.has("t"+i) ? ZERO : mealMacros(r))).reduce(addM,ZERO);
+  const baseMange = eaten.map(r=>{ const m = /^t(\d+)$/.exec(r.id||""); return m && TB[+m[1]] ? TB[+m[1]] : ZERO; })
+    .concat(TB.map((b,i)=>ids.has("t"+i) ? ZERO : b)).reduce(addM,ZERO);
   const mange = eaten.map(mealMacros).reduce(addM,ZERO);
   const ecart = {kcal:mange.kcal-baseMange.kcal, p:mange.p-baseMange.p, g:mange.g-baseMange.g, l:mange.l-baseMange.l};
-  return { mange, prevu: all.map(mealMacros).reduce(addM,ZERO), tpl: dayMacros(tplDay(j.type)), ecart, nbFait: eaten.length, nb: all.length }; }
+  return { mange, prevu: all.map(mealMacros).reduce(addM,ZERO), tpl: Array.isArray(j.base) ? j.base.reduce(addM,ZERO) : dayMacros(tplDay(j.type)), ecart, nbFait: eaten.length, nb: all.length }; }
 const sortRepas = L => L.sort((a,b)=>(a.heure||"99:99")<(b.heure||"99:99")?-1:(a.heure||"99:99")>(b.heure||"99:99")?1:0);
 async function saveJournal(d, j){ const o = {...j, date:d, maj:new Date().toISOString()}; delete o.id; await put("journal/"+d, o); }
 function itemMacros(it){
@@ -630,11 +631,12 @@ VIEWS.diet = { title:"Diet", body(){
     h += '<div class="spread"><div><div class="big num">'+Math.round(m.kcal)+'</div><div class="small muted">kcal / jour</div></div><div class="grid3" style="flex:1;max-width:240px"><div class="stat"><span class="k">Prot.</span><span class="v num">'+Math.round(m.p)+'g</span></div><div class="stat"><span class="k">Gluc.</span><span class="v num">'+Math.round(m.g)+'g</span></div><div class="stat"><span class="k">Lip.</span><span class="v num">'+Math.round(m.l)+'g</span></div></div></div>';
     if (D.note) h += '<div class="small muted">'+esc(D.note)+'</div>';
     h += '</section>';
-    h += '<section class="card">'+((day&&day.repas)||[]).map(r=>{ const mm = mealMacros(r);
-      return '<div class="meal"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
+    h += '<section class="card">'+((day&&day.repas)||[]).map((r,ri)=>{ const mm = mealMacros(r);
+      return '<div class="meal tap" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'" data-i="'+ri+'" style="cursor:pointer"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
         (r.items||[]).map(it=>{ const a=food(it.a)||{nom:it.a,unite:"g"}; const im=itemMacros(it); return '<div class="food"><span>'+esc(a.nom)+(it.etat?' <span class="muted small">('+esc(it.etat)+')</span>':'')+'</span><span class="g num">'+it.q+uLab(a,it.q)+'</span><span class="k num small">'+Math.round(im.kcal)+' kcal</span></div>'; }).join("")+
         '<div class="macros"><span>P <b class="num">'+r1(mm.p)+'</b></span><span>G <b class="num">'+r1(mm.g)+'</b></span><span>L <b class="num">'+r1(mm.l)+'</b></span>'+(r.note?'<span>'+esc(r.note)+'</span>':'')+'</div></div>'; }).join("")+'</section>';
-    h += '<div class="hint" style="text-align:center">Pour changer ta diet, dis-le à Claude : il met l\'app à jour et garde l\'historique.</div>';
+    h += '<button class="btn full" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'">+ Ajouter un repas au jour '+(ty==="training"?"training":"off")+'</button>';
+    h += '<div class="hint" style="text-align:center">Touche un repas pour le modifier. Chaque changement est noté dans l\'historique (onglet Suivi). Tes journaux déjà commencés ne changent pas.</div>';
     return h;
   }
   if (S.ui.dietTab==="riz"){
@@ -850,10 +852,10 @@ function renderSheet(){
   if (!S.sheet) return;
   const s = SHEETS[S.sheet.type]; if (!s) return;
   document.getElementById("sheet").innerHTML = '<div class="sheet-bg" data-act="sheetBg"><form class="sheet" data-form="sheet" role="dialog" aria-modal="true"><div class="grab"></div>'+s.html(S.sheet.ds)+'</form></div>';
-  if (S.sheet.type==="repas") mealDraftTotal();
+  if (S.sheet.type==="repas" || S.sheet.type==="tplRepas") mealDraftTotal();
   if (S.sheet.type==="tache" && S.sheet.keepTk){ const k = S.sheet.keepTk; [["tk-debut","debut"],["tk-fin","fin"],["tk-titre","titre"]].forEach(([id,f])=>{ const e = document.getElementById(id); if (e && k[f]!=null) e.value = k[f]; }); }
   if (S.sheet.type==="item" && S.sheet.keep){ const k = S.sheet.keep; ["heure","titre","trajet"].forEach(x=>{ const e = document.getElementById("s-"+x); if (e && k[x]!=null) e.value = k[x]; }); }
-  const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas") setTimeout(()=>f.focus(),60);
+  const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas" && S.sheet.type!=="tplRepas") setTimeout(()=>f.focus(),60);
 }
 const fld = (id,label,v,attrs) => '<div class="field"><label for="'+id+'">'+label+'</label><input class="inp" id="'+id+'" value="'+esc(v==null?"":v)+'" '+(attrs||"")+'></div>';
 const catSel = (id,cur) => '<div class="field"><label for="'+id+'">Catégorie</label><select class="inp" id="'+id+'">'+cats().map(c=>'<option'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join("")+'</select></div>';
@@ -1083,6 +1085,27 @@ function mealDraftItemsHtml(dr){
 }
 function mealDraftTotal(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const m = mealMacros(dr); const el = document.getElementById("ri-tot");
   if (el) el.innerHTML = '<b class="num">'+Math.round(m.kcal)+' kcal</b> · P '+r1(m.p)+' · G '+r1(m.g)+' · L '+r1(m.l); }
+SHEETS.tplRepas = { html(ds){
+  const D = S.app.diet || {}, ty = ds.ty || "training", L = ((D.jours||{})[ty]||{}).repas || [], isNew = !(ds.i!=null && ds.i!=="");
+  if (!S.sheet.draft) S.sheet.draft = isNew ? {heure:"", nom:"", items:[]} : JSON.parse(JSON.stringify(L[+ds.i]||{}));
+  const dr = S.sheet.draft, autre = ty==="training" ? "off" : "training", other = (((D.jours||{})[autre]||{}).repas||[]).some(r=>r.nom===dr.nom);
+  return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · template '+(ty==="training"?"training":"off")+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
+    mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+
+    (!S.sheet.fp && !S.sheet.nf ? fld("s-rnote","Note (facultatif)",dr.note||"",'placeholder="sans banane"')+'<label class="row small" style="gap:8px"><input type="checkbox" id="s-both" style="width:20px;height:20px"'+(S.sheet.both?" checked":"")+'> Appliquer aussi au jour '+(autre==="training"?"training":"off")+(other?' (remplace « '+esc(dr.nom)+' »)':' (ajouté)')+'</label>' : '')+sheetBtns(!isNew); },
+  async save(ds){ const dr = S.sheet.draft; syncDraft(); const n = document.getElementById("s-rnote"); if (n) dr.note = n.value.trim(); if (!dr.note) delete dr.note;
+    dr.nom = (dr.nom||"").trim() || "Repas"; dr.items = dr.items.filter(x=>x.q>0); if (!dr.items.length) return toast("Ajoute au moins un aliment.", true);
+    const both = !!(document.getElementById("s-both")||{}).checked, ty = ds.ty || "training", D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; D.jours = D.jours || {};
+    const clean = {heure:dr.heure||"", nom:dr.nom, items:dr.items.map(x=>({a:x.a, q:x.q, ...(x.etat?{etat:x.etat}:{})})), ...(dr.note?{note:dr.note}:{})};
+    const appliquer = (t, i) => { const R = ((D.jours[t] = D.jours[t] || {repas:[]}).repas = D.jours[t].repas || []); if (i!=null && i>=0) R[i] = clean; else R.push(clean); sortRepas(R); };
+    const ancien = ds.i!=null && ds.i!=="" ? ((D.jours[ty]||{}).repas||[])[+ds.i] : null;
+    appliquer(ty, ancien ? +ds.i : null);
+    if (both){ const autre = ty==="training" ? "off" : "training"; const R2 = (D.jours[autre]||{}).repas||[]; appliquer(autre, R2.findIndex(r=>r.nom===(ancien?ancien.nom:clean.nom))); }
+    D.majLe = today(); await put("app/diet", D);
+    const desc = clean.items.map(x=>{ const a = food(x.a)||{nom:x.a}; return a.nom+" "+x.q+uLab(a,x.q).trim(); }).join(", ");
+    put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+(both?"training et off":ty)+" : "+(ancien?"« "+clean.nom+" » modifié":"repas « "+clean.nom+" » ajouté")+" ("+(clean.heure?clean.heure+", ":"")+desc+")."}).catch(()=>{});
+    toast("Template mise à jour"); },
+  async del(ds){ const ty = ds.ty || "training", D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; const R = (D.jours[ty]||{}).repas||[]; const r = R.splice(+ds.i,1)[0];
+    D.majLe = today(); await put("app/diet", D); put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+ty+" : repas « "+(r&&r.nom)+" » retiré."}).catch(()=>{}); toast("Repas retiré de la template"); } };
 SHEETS.repas = { html(ds){
   if (!S.sheet.draft){ const j = journalOf(S.ui.jourDiet); const r = ds.i!=null && ds.i!=="" ? j.repas[+ds.i] : null;
     S.sheet.draft = r ? JSON.parse(JSON.stringify(r)) : {heure:"", nom:"", items:[], fait:true}; }
@@ -1104,11 +1127,11 @@ document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.
     try { const r = await api({action:"arrets", q}); (S.sheet.tr.sug = S.sheet.tr.sug||{})[f] = r.arrets||[];
       box.innerHTML = (r.arrets||[]).slice(0,6).map((a,i)=>'<button type="button" class="btn sm ghost" style="justify-content:flex-start" data-act="trPick" data-f="'+f+'" data-i="'+i+'">'+esc(a.nom)+'</button>').join("") || '<span class="small muted">Aucun arrêt trouvé.</span>';
     } catch(err){ box.innerHTML = '<span class="small up">'+esc(errMsg(err))+'</span>'; } }, 350); });
-function keepRepas(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value; }
+function keepRepas(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"), no = document.getElementById("s-rnote"), b = document.getElementById("s-both"); if (h) dr.heure = h.value; if (n) dr.nom = n.value; if (no) dr.note = no.value; if (b) S.sheet.both = b.checked; }
 function syncDraft(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
   const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value;
   dr.items.forEach((it,k)=>{ const e = document.getElementById("ri-q-"+k); if (e){ const v = num(e.value); it.q = v==null?0:v; } }); }
-document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="repas") return;
+document.addEventListener("input", e => { const t = e.target; if (!S.sheet || (S.sheet.type!=="repas" && S.sheet.type!=="tplRepas")) return;
   if (t.id && t.id.startsWith("ri-q-")){ syncDraft(); const k = t.dataset.k; const m = itemMacros(S.sheet.draft.items[k]); const el = document.getElementById("ri-k-"+k); if (el) el.textContent = Math.round(m.kcal)+" kcal"; mealDraftTotal(); } });
 document.addEventListener("change", e => { const t = e.target; if (!S.sheet) return;
   if (t.id==="nf-photo" && t.files && t.files[0]) lireEtiquette(t.files[0], t); });
@@ -1907,7 +1930,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261101133642";
+const APP_VERSION = "20261101190733";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
