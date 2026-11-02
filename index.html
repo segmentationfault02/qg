@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-NxeE1ksyB/SrYXQGGIJZAucsae7xCoXy6V+I6qmAHgQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-hls+FNi/QSopOgJ89zHrX2UYfJQQTumhMNB+VwpGNX4='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -231,7 +231,7 @@ const sum = (a,f) => a.reduce((s,x)=>s+(f(x)||0),0);
 const S = {
   db:null, dl:null, dbState:"loading",
   loaded:{},
-  app:{}, journal:{}, aliments:{}, achats:[], dettes:[], seancesHist:[], sante:{}, poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
+  app:{}, journal:{}, aliments:{}, achats:[], dettes:[], phases:[], seancesHist:[], sante:{}, poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
   view:"accueil", sheet:null,
   ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
@@ -578,7 +578,55 @@ function tripCard(t, i, act){
     '<div class="small muted" style="white-space:pre-wrap">'+esc(tripText(t))+'</div></button>';
 }
 /* ---------- CORPS ---------- */
+/* ---------- phases (masse, sèche, mini cut…) ---------- */
+const PH_TYPES = [["minicut","Mini cut"],["seche","Sèche"],["masse","Prise de masse"],["maintien","Maintien"],["recompo","Recomposition"]];
+const phTypeLab = k => (PH_TYPES.find(x=>x[0]===k)||[k,k||"Phase"])[1];
+const phasesTri = () => (S.phases||[]).slice().sort((a,b)=>(b.debut||"")<(a.debut||"")?-1:1);
+const phaseActive = () => phasesTri().find(p=>!p.fin) || null;
+function phaseSel(){ const id = S.ui.phase; if (id==="tout") return null; const L = phasesTri(); return (id && L.find(p=>p.id===id)) || phaseActive() || null; }
+const inPhase = (d, ph) => { ph = ph===undefined ? phaseSel() : ph; return !ph || (d>=ph.debut && (!ph.fin || d<=ph.fin)); };
+const phaseNom = ph => ph.nom || phTypeLab(ph.type);
+const phaseDates = ph => fShort(ph.debut)+" "+ph.debut.slice(0,4)+" → "+(ph.fin ? fShort(ph.fin)+" "+ph.fin.slice(0,4) : "aujourd'hui");
+function phaseBar(){
+  const L = phasesTri(), sel = phaseSel();
+  let h = '<section class="card" style="gap:8px"><div class="spread"><span class="eyebrow">Phase</span><button class="btn sm ghost" data-act="sheet" data-s="phase">Nouvelle phase</button></div>';
+  if (!L.length) return h+'<div class="small muted">Aucune phase. Crée ta phase actuelle (mini cut, sèche, prise de masse…) pour suivre tes valeurs phase par phase.</div></section>';
+  h += '<div class="row" style="gap:6px;flex-wrap:wrap">'+L.map(p=>'<button class="btn sm'+(sel&&sel.id===p.id?' pri':'')+'" data-act="phaseSel" data-k="'+esc(p.id)+'">'+esc(phaseNom(p))+' · '+fShort(p.debut).replace(/\.$/,"")+' '+p.debut.slice(2,4)+(p.fin?'':' (en cours)')+'</button>').join("")+'<button class="btn sm'+(!sel?' pri':'')+'" data-act="phaseSel" data-k="tout">Tout</button></div>';
+  if (sel){ const j = Math.round((parseYmd(sel.fin||today())-parseYmd(sel.debut))/86400000)+1;
+    h += '<div class="spread" style="align-items:flex-start"><div><b>'+esc(phaseNom(sel))+'</b>'+(phaseNom(sel)!==phTypeLab(sel.type)?' <span class="chip">'+esc(phTypeLab(sel.type))+'</span>':'')+'<div class="small muted">'+phaseDates(sel)+' · '+j+' jour'+(j>1?'s':'')+' ('+(Math.round(j/7*10)/10)+' sem.)</div>'+(sel.objectif?'<div class="small">Objectif : '+esc(sel.objectif)+'</div>':'')+'</div><button class="btn sm ghost" data-act="sheet" data-s="phase" data-id="'+esc(sel.id)+'">Modifier</button></div>';
+    h += phaseBilan(sel); }
+  return h+'</section>';
+}
+function phaseBilan(ph){
+  const P = Object.keys(S.poids).filter(d=>inPhase(d,ph) && typeof S.poids[d].kg==="number").sort();
+  const M = Object.keys(S.mesures).filter(d=>inPhase(d,ph)).sort(), T = Object.keys(S.tension).filter(d=>inPhase(d,ph)).sort();
+  const out = [];
+  if (P.length){ const a = S.poids[P[0]].kg, b = S.poids[P[P.length-1]].kg, d = b-a; out.push('<div class="stat"><span class="k">Poids</span><span class="v num">'+kg(a)+' → '+kg(b)+'</span><span class="small num '+(!d||ph.type==="maintien"?'':((d>0)===(ph.type==="masse")?'down':'up'))+'">'+(d>0?'+':'')+kg(d)+' kg</span></div>'); }
+  if (M.length>1){ const a = S.mesures[M[0]], b = S.mesures[M[M.length-1]];
+    ["taille","abdomen","poitrine","bicepsD"].forEach(k=>{ if (a[k]!=null && b[k]!=null){ const d = r1(b[k]-a[k]); const l = (MES.find(x=>x[0]===k)||[k,k])[1]; out.push('<div class="stat"><span class="k">'+l+'</span><span class="v num">'+kg(a[k])+' → '+kg(b[k])+'</span><span class="small num">'+(d>0?'+':'')+String(d).replace(".",",")+' cm</span></div>'); } }); }
+  if (T.length){ const L = T.map(d=>S.tension[d]).filter(x=>x.sys&&x.dia); if (L.length) out.push('<div class="stat"><span class="k">Tension moy.</span><span class="v num">'+Math.round(sum(L,x=>x.sys)/L.length)+'/'+Math.round(sum(L,x=>x.dia)/L.length)+'</span><span class="small muted">'+L.length+' mesure'+(L.length>1?'s':'')+'</span></div>'); }
+  return out.length ? '<div class="grid2">'+out.join("")+'</div>' : '<div class="small muted">Pas encore de valeurs dans cette phase.</div>';
+}
+const SHEET_PHASE = { html(ds){ const p = ds.id ? (S.phases.find(x=>x.id===ds.id)||{}) : {type:"minicut", debut:today()}; const act = phaseActive();
+  return '<h2 class="h2">'+(ds.id?"Modifier la phase":"Nouvelle phase")+'</h2>'+
+    '<div class="field"><label for="ph-type">Type</label><select class="inp" id="ph-type">'+PH_TYPES.map(([k,l])=>'<option value="'+k+'"'+(p.type===k?' selected':'')+'>'+l+'</option>').join("")+'</select></div>'+
+    fld("ph-nom","Nom (facultatif)",p.nom||"",'placeholder="Mini cut novembre"')+fld("ph-obj","Objectif",p.objectif||"",'placeholder="Perdre du gras"')+
+    '<div class="grid2">'+fld("ph-debut","Début",p.debut||today(),'type="date"')+fld("ph-fin","Fin (vide = en cours)",p.fin||"",'type="date"')+'</div>'+fld("ph-note","Note (facultatif)",p.note||"","")+
+    (!ds.id && act ? '<div class="hint">La phase en cours (« '+esc(phaseNom(act))+' ») sera terminée la veille du début de la nouvelle et reste enregistrée.</div>' : '')+sheetBtns(!!ds.id); },
+  async save(ds){ const debut = val("ph-debut"); if (!debut) return toast("Indique la date de début.", true); const fin = val("ph-fin") || null;
+    if (fin && fin < debut) return toast("La fin est avant le début.", true);
+    const id = ds.id || uid(), o = {id, type:val("ph-type"), nom:val("ph-nom").trim(), objectif:val("ph-obj").trim(), debut, fin, note:val("ph-note").trim()};
+    if (!ds.id){ const act = phaseActive(); if (act && act.debut < debut) await put("phases/"+act.id, {...act, fin:addDays(debut,-1)}); }
+    await put("phases/"+id, o); S.ui.phase = id; toast("Phase enregistrée"); },
+  async del(ds){ await rm("phases/"+ds.id); S.ui.phase = null; toast("Phase supprimée (tes valeurs restent)"); } };
+
 VIEWS.corps = { title:"Corps", body(){
+  // Filtre phase : on restreint temporairement poids, mensurations et tension aux dates de la phase choisie.
+  const ph = phaseSel(), keep = {poids:S.poids, mesures:S.mesures, tension:S.tension}, bar = phaseBar();
+  if (ph){ const f = o => Object.fromEntries(Object.entries(o||{}).filter(([d])=>inPhase(d,ph))); S.poids = f(keep.poids); S.mesures = f(keep.mesures); S.tension = f(keep.tension);
+    if (ph.fin==null && S.poids[today()]==null && keep.poids[today()]) S.poids[today()] = keep.poids[today()]; }
+  try { return bar + VIEWS.corps.inner(); } finally { Object.assign(S, keep); }
+}, inner(){
   const xt = EXT.tabs.filter(t=>t.vue==="corps"), opts = [["poids","Poids"],["mesures","Mensurations"],["tension","Tension"]].concat(xt.map(t=>[t.k,t.label]));
   if (!opts.some(o=>o[0]===S.ui.corpsTab)) S.ui.corpsTab = "poids";
   let h = seg("corpsTab", S.ui.corpsTab, opts); if (opts.length>4) h = h.replace('class="seg seg-s"','class="seg seg-g3"');
@@ -846,6 +894,7 @@ VIEWS.ecole = { title:"École 42", body(){
 
 /* ================= SHEETS (formulaires) ================= */
 const SHEETS = {};
+SHEETS.phase = SHEET_PHASE;
 function openSheet(type, ds){ S.sheet = {type, ds:ds||{}}; renderSheet(); }
 function closeSheet(){ S.sheet = null; document.getElementById("sheet").innerHTML = ""; if (pending) render(); }
 function renderSheet(){
@@ -1204,6 +1253,7 @@ const ACT = {
   corpsTab(d){ S.ui.corpsTab=d.k; render(); },
   dietTab(d){ S.ui.dietTab=d.k; render(); if (d.k==="riz") rizCalc(); },
   dietType(d){ S.ui.dietType=d.k; render(); },
+  phaseSel(d){ S.ui.phase = d.k; render(); },
   seanceEdit(){ S.ui.seanceEdit = !S.ui.seanceEdit; render(); },
   async seanceSet(d){ const day = d.d, tr = {...(S.app.training||{})}; delete tr.id; const avant = dayType(day);
     const ch = {...(tr.changes||{})}; const def = planFor(day);
@@ -1807,7 +1857,7 @@ async function voirFichier(path, titre){
 function loadExt(){
   Object.keys(Store.rows).filter(p=>p.startsWith("ext/")).forEach(p=>{ const m = Store.rows[p]; if (!m || typeof m.code!=="string" || EXT.charges[p]===m.v) return;
     EXT.charges[p] = m.v;
-    window.__qgExt = { S, Store, EXT, VIEWS, SHEETS, ACT, render, renderSheet, openSheet, closeSheet, put, rm, toast, esc, fld, seg, chk, sheetBtns, val, num, uid, r1, sum, today, addDays, fShort, fDay, parseYmd, normTxt, ocrWorker, prepImage, lirePdf, fichierEnvoyer, fichierSuppr, voirFichier,
+    window.__qgExt = { S, Store, EXT, VIEWS, SHEETS, ACT, render, renderSheet, openSheet, closeSheet, put, rm, toast, esc, fld, seg, chk, sheetBtns, val, num, uid, r1, sum, today, addDays, fShort, fDay, parseYmd, normTxt, ocrWorker, prepImage, lirePdf, inPhase, phaseSel, fichierEnvoyer, fichierSuppr, voirFichier,
       watch(col){ (Store.subs[col] = Store.subs[col]||[]).push(()=>{ S.loaded[col] = true; render(); }); } };
     const url = URL.createObjectURL(new Blob([m.code], {type:"text/javascript"})); const sc = document.createElement("script");
     sc.src = url; sc.onload = sc.onerror = () => { URL.revokeObjectURL(url); delete window.__qgExt; render(); }; document.head.appendChild(sc); });
@@ -1816,7 +1866,7 @@ function loadExt(){
 /* ================= SYNCHRO (Supabase) ================= */
 const SB_URL = "https://uzaywupafqbkgupnuege.supabase.co";
 const SB_KEY = "sb_publishable_o-WPy3WbBHjzq4tjvN2fEQ_hE4jk1Qb";
-const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","dettes","seances","sante"];
+const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","dettes","seances","sante","phases"];
 const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:"qg-auth"}}) : null;
 const Store = { rows:{}, subs:{}, uid:null,
   emit(col){ const docs = Object.keys(this.rows).filter(p=>p.startsWith(col+"/")).map(p=>{ const o=this.rows[p]; return {id:p.slice(col.length+1), exists:true, data:()=>o}; });
@@ -1921,7 +1971,7 @@ async function start(session){
 async function launch(session){
   if (started) return; started = true;
   Store.uid = session.user.id; S.db = dbAdapter; S.dbState = "ok"; S.dl = true;
-  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",dettes:"dettes",seances:"seancesHist",sante:"sante"}[c];
+  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",dettes:"dettes",phases:"phases",seances:"seancesHist",sante:"sante"}[c];
     const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines","journal","aliments","sante"].includes(c);
     sub(c, L => { S[m] = asMap ? byId(L) : L; }); });
   render();
@@ -1930,7 +1980,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261101190733";
+const APP_VERSION = "20261102110104";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
