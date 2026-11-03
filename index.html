@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-hls+FNi/QSopOgJ89zHrX2UYfJQQTumhMNB+VwpGNX4='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-LAfcrur4sULn8Xit9lB07iOk3fzFy8tDWmjJ9gMBR28='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -904,7 +904,7 @@ function renderSheet(){
   if (S.sheet.type==="repas" || S.sheet.type==="tplRepas") mealDraftTotal();
   if (S.sheet.type==="tache" && S.sheet.keepTk){ const k = S.sheet.keepTk; [["tk-debut","debut"],["tk-fin","fin"],["tk-titre","titre"]].forEach(([id,f])=>{ const e = document.getElementById(id); if (e && k[f]!=null) e.value = k[f]; }); }
   if (S.sheet.type==="item" && S.sheet.keep){ const k = S.sheet.keep; ["heure","titre","trajet"].forEach(x=>{ const e = document.getElementById("s-"+x); if (e && k[x]!=null) e.value = k[x]; }); }
-  const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas" && S.sheet.type!=="tplRepas") setTimeout(()=>f.focus(),60);
+  const f = document.querySelector(".sheet .inp"); if (f && !S.sheet.ds.id && S.sheet.type!=="repas" && S.sheet.type!=="tplRepas" && S.sheet.type!=="trajet") setTimeout(()=>f.focus(),60);
 }
 const fld = (id,label,v,attrs) => '<div class="field"><label for="'+id+'">'+label+'</label><input class="inp" id="'+id+'" value="'+esc(v==null?"":v)+'" '+(attrs||"")+'></div>';
 const catSel = (id,cur) => '<div class="field"><label for="'+id+'">Catégorie</label><select class="inp" id="'+id+'">'+cats().map(c=>'<option'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join("")+'</select></div>';
@@ -1168,7 +1168,13 @@ SHEETS.repas = { html(ds){
     sortRepas(j.repas); await saveJournal(d, j); toast("Repas enregistré"); },
   async del(ds){ const d = S.ui.jourDiet, j = journalOf(d); j.repas.splice(+ds.i,1); await saveJournal(d, j); toast("Repas retiré pour ce jour"); } };
 function keepSheetFields(){ const s = S.sheet; if (!s || s.type!=="item") return; const ds = s.ds; s.keep = {heure:val("s-heure"), titre:val("s-titre"), trajet:val("s-trajet")}; }
-let sugTimer = null;
+let sugTimer = null, sugTimer2 = null;
+document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="trajet" || !/^tr2-q-(from|to)$/.test(t.id)) return;
+  const f = t.id.slice(6), q = t.value.trim(), box = document.getElementById(t.id+"-sug"); clearTimeout(sugTimer2); if (q.length<2){ box.innerHTML = ""; return; }
+  sugTimer2 = setTimeout(async ()=>{ box.innerHTML = '<span class="small muted">Recherche…</span>';
+    try { const r = await api({action:"arrets", q}); const L = (r.arrets||[]).slice(0,6); (S.sheet.tr.qres = S.sheet.tr.qres||{})[f] = L;
+      box.innerHTML = L.map((a,i)=>'<button type="button" class="btn sm ghost" style="justify-content:flex-start" data-act="trQPick" data-f="'+f+'" data-i="'+i+'">'+esc(a.nom)+'</button>').join("") || '<span class="small muted">Aucun arrêt trouvé.</span>';
+    } catch(err){ box.innerHTML = '<span class="small up">'+esc(errMsg(err))+'</span>'; } }, 350); });
 document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.sheet.type!=="item" || !/^tr-(from|to)$/.test(t.id)) return;
   const f = t.id.slice(3); S.sheet.tr[f] = null; clearTimeout(sugTimer); const q = t.value.trim(); const box = document.getElementById(t.id+"-sug");
   if (q.length<2){ box.innerHTML = ""; return; }
@@ -1373,8 +1379,14 @@ document.addEventListener("submit", async e => {
     if (k==="sheet"){ const s = S.sheet; await SHEETS[s.type].save(s.ds); if (S.sheet===s && !document.querySelector(".toast.err")) closeSheet(); return; }
     if (k==="addTache"){ const titre = val("at-titre").trim(); if (!titre) return toast("Écris un titre.", true);
       const day = S.ui.agendaDay, doc = JSON.parse(JSON.stringify(dayDoc(day))); doc.date = day;
-      doc.taches.push({id:uid(), type:"libre", debut:val("at-heure"), titre, fait:false, faitA:null, trajets:[]});
-      await saveDay(doc); const a = document.getElementById("at-titre"); if (a) a.value = ""; toast("Tâche ajoutée"); return; }
+      const debut = val("at-heure"), fin = val("at-fin"), avecTrajet = (document.getElementById("at-trajet")||{}).checked;
+      if (avecTrajet && !debut) return toast("Mets l'heure de début pour calculer le trajet.", true);
+      if (fin && debut && fin <= debut) return toast("La fin doit être après le début.", true);
+      const t = {id:uid(), type:"libre", debut, titre, fait:false, faitA:null, trajets:[]}; if (fin) t.fin = fin;
+      couperChevauchement(doc, t.id, debut); doc.taches.push(t); sortT(doc.taches);
+      await saveDay(doc); ["at-titre","at-heure","at-fin"].forEach(id=>{ const e = document.getElementById(id); if (e) e.value = ""; }); const cb = document.getElementById("at-trajet"); if (cb) cb.checked = false;
+      if (avecTrajet){ const i = doc.taches.findIndex(x=>x.id===t.id); S.sheet = {type:"trajet", ds:{d:day, i:String(i), heure:debut}, tr:{from:positionAvant(doc, debut), to:null, arrive:true, heure:debut, sug:{}}}; renderSheet(); }
+      else toast("Tâche ajoutée"); return; }
     if (k==="poids"){ const inp = f.querySelector("input"); const v = num(inp.value); if (v==null || v<30 || v>250) return toast("Entre un poids valide, par ex. 82.4",true);
       await put("poids/"+today(), {date:today(), kg:r1(v)}); toast("Pesée notée : "+kg(v)+" kg"); return; }
     if (k==="tension"){ const sys=num(val("t-sys")), dia=num(val("t-dia")), pul=num(val("t-pul")); if (sys==null||dia==null) return toast("Systolique et diastolique obligatoires.",true);
@@ -1478,6 +1490,13 @@ function dayDoc(d){
   return {...a, taches:(a.items||[]).map(i=>({id:i.id, debut:i.heure||"", titre:i.titre, fait:!!i.fait, type:"libre", trajets:[], trajetTexte:i.trajet||""}))};
 }
 const sortT = L => L.sort((a,b)=>(a.debut||"99:99")<(b.debut||"99:99")?-1:(a.debut||"99:99")>(b.debut||"99:99")?1:0);
+// Une tâche en cours (école…) se termine quand une nouvelle tâche commence pendant son créneau.
+function couperChevauchement(doc, idNouvelle, heure){ if (!heure) return;
+  (doc.taches||[]).forEach(x=>{ if (x.id===idNouvelle || x.fait || !x.debut || !x.fin) return; if (x.debut < heure && x.fin > heure) x.fin = heure; }); }
+// Arrêt où l'on se trouve avant une heure donnée : arrivée du dernier trajet avant cette heure.
+function positionAvant(doc, heure){ let pos = AR.poterie, last = "";
+  (doc.taches||[]).forEach(x=>{ (x.trajets||[]).forEach(tj=>{ const o = optSel(tj); const arr = o ? hhmm(o.arrivee) : (x.debut||""); if (tj.vers && tj.vers.ref && arr && arr <= heure && arr >= last){ last = arr; pos = tj.vers; } }); });
+  return pos; }
 async function saveDay(doc){ const o = JSON.parse(JSON.stringify(doc)); delete o.id; delete o.items; sortT(o.taches); await put("agenda/"+o.date, o); }
 function sousTitre(seance, salle, lieu, chien){
   const p = [];
@@ -1550,7 +1569,7 @@ VIEWS.agenda = { title:"Agenda", body(){
   const doc = dayDoc(sel), T = sortT(doc.taches.slice());
   h += '<section class="card"><div class="card-h"><div><h2 class="h2 cap">'+fDay(sel)+'</h2>'+(doc.sousTitre?'<div class="small muted">'+esc(doc.sousTitre)+'</div>':'')+'</div>'+(doc.statut==="brouillon"?'<span class="chip warn">brouillon</span>':'')+'</div>';
   h += T.length ? '<div class="list">'+T.map(x=>tacheHtml(sel, x, doc.taches.indexOf(x))).join("")+'</div>' : '<div class="empty">Journée vide.</div>';
-  h += '<form data-form="addTache" class="stack" style="gap:6px"><span class="eyebrow">Ajouter une tâche</span><div class="row" style="gap:8px;align-items:flex-end"><div class="field" style="width:104px;flex:none"><label for="at-heure">Heure</label><input class="inp num" type="time" id="at-heure"></div><div class="field grow"><label for="at-titre">Titre</label><input class="inp" id="at-titre" placeholder="Rendez-vous, tâche…" enterkeyhint="done"></div></div><button class="btn full" type="submit">Ajouter</button></form>';
+  h += '<form data-form="addTache" class="stack" style="gap:6px"><span class="eyebrow">Ajouter une tâche</span><div class="field"><label for="at-titre">Titre</label><input class="inp" id="at-titre" placeholder="Rendez-vous, tâche…" enterkeyhint="done"></div><div class="grid2"><div class="field"><label for="at-heure">Début</label><input class="inp num" type="time" id="at-heure"></div><div class="field"><label for="at-fin">Fin (facultatif)</label><input class="inp num" type="time" id="at-fin"></div></div><label class="row small" style="gap:8px"><input type="checkbox" id="at-trajet" style="width:20px;height:20px"> Ajouter le trajet pour y aller</label><button class="btn full" type="submit">Ajouter</button><div class="hint">Si une tâche est en cours à cette heure (école…), elle se termine automatiquement au départ pour ce rendez-vous.</div></form>';
   if (T.length){
     h += '<div class="row" style="gap:8px"><button class="btn sm grow" data-act="agShift">Décaler tout</button><button class="btn sm grow" data-act="recap">Récap</button></div>';
     if (S.agUi.shift) h += '<div class="row wrap-r" style="gap:6px">'+[-30,-15,15,30,60].map(n=>'<button class="btn sm" data-act="doShift" data-n="'+n+'">'+(n>0?"+":"")+(Math.abs(n)>=60?(n/60)+" h":n+" min")+'</button>').join("")+'</div><div class="hint">Décale toutes les tâches pas encore faites et recalcule leurs trajets.</div>';
@@ -1804,11 +1823,13 @@ function keepTk(){ const s = S.sheet; s.keepTk = {debut:val("tk-debut"), fin:val
 SHEETS.trajet = { html(ds){ if (!S.sheet.tr) S.sheet.tr = {from:AR.poterie, to:null, arrive:true, heure:ds.heure||"", sug:{}};
   const T = S.sheet.tr, fav = Object.values(AR);
   const chips = f => '<div class="row wrap-r" style="gap:6px">'+fav.map((a,i)=>'<button type="button" class="chip" style="border:0;cursor:pointer;'+(T[f]&&T[f].ref===a.ref?'background:var(--accent);color:var(--on-accent)':'')+'" data-act="trArret" data-f="'+f+'" data-i="'+i+'">'+esc(shortStop(a.nom))+'</button>').join("")+'</div>';
-  return '<h2 class="h2">Ajouter un trajet</h2><span class="eyebrow">Départ</span>'+chips("from")+'<span class="eyebrow">Arrivée</span>'+chips("to")+
+  const cherche = f => '<input class="inp" id="tr2-q-'+f+'" placeholder="Ou cherche un arrêt…" autocomplete="off"><div id="tr2-q-'+f+'-sug" class="stack" style="gap:4px"></div>'+(T[f] && !fav.some(a=>a.ref===T[f].ref) ? '<div class="small">Choisi : <b>'+esc(T[f].nom)+'</b></div>' : '');
+  return '<h2 class="h2">Ajouter un trajet</h2><span class="eyebrow">Départ</span>'+chips("from")+cherche("from")+'<span class="eyebrow">Arrivée</span>'+chips("to")+cherche("to")+
     '<div class="row" style="gap:8px"><div class="seg" style="flex:1"><button type="button" data-act="trMode2" data-k="dep" aria-pressed="'+(!T.arrive)+'">Partir à</button><button type="button" data-act="trMode2" data-k="arr" aria-pressed="'+T.arrive+'">Arriver à</button></div><input class="inp num" type="time" id="tr2-heure" style="width:118px" value="'+esc(T.heure)+'"></div>'+
     '<button type="button" class="btn pri" data-act="trGo">Chercher</button><div id="tr2-res" class="stack"></div><div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>'; },
   async save(){} };
 Object.assign(ACT, {
+  trQPick(d){ S.sheet.tr.heure = val("tr2-heure"); S.sheet.tr[d.f] = (S.sheet.tr.qres||{})[d.f][+d.i]; renderSheet(); },
   trArret(d){ S.sheet.tr.heure = val("tr2-heure"); S.sheet.tr[d.f] = Object.values(AR)[+d.i]; renderSheet(); },
   trMode2(d){ S.sheet.tr.heure = val("tr2-heure"); S.sheet.tr.arrive = d.k==="arr"; renderSheet(); },
   async trGo(){ const T = S.sheet.tr, ds = S.sheet.ds; T.heure = val("tr2-heure"); if (!T.from || !T.to || !T.heure) return toast("Choisis départ, arrivée et heure.", true);
@@ -1818,7 +1839,9 @@ Object.assign(ACT, {
       box.innerHTML = options.length ? options.map((o,oi)=>'<button type="button" class="card" style="text-align:left;gap:4px;padding:10px 12px;cursor:pointer;color:var(--fg)" data-act="trKeep" data-i="'+oi+'"><b class="num">'+hfr(hhmm(o.depart))+' → '+hfr(hhmm(o.arrivee))+'</b><span class="small muted">'+optLines(o).map(esc).join("<br>")+'</span></button>').join("") : '<div class="empty">Aucun trajet trouvé.</div>';
     } catch(e){ box.innerHTML = '<div class="small up">'+esc(errMsg(e))+'</div>'; } },
   async trKeep(d){ const T = S.sheet.tr, ds = S.sheet.ds; const doc = JSON.parse(JSON.stringify(dayDoc(ds.d))), t = doc.taches[+ds.i]; if (!t || !T.cand) return;
-    t.trajets = (t.trajets||[]).concat({...T.cand, choisi:+d.i}); try { await saveDay(doc); closeSheet(); toast("Trajet ajouté"); } catch(e){} }
+    const tj = {...T.cand, choisi:+d.i}; t.trajets = (t.trajets||[]).concat(tj);
+    const o = optSel(tj); if (o && T.arrive) couperChevauchement(doc, t.id, hhmm(o.depart));
+    try { await saveDay(doc); closeSheet(); toast("Trajet ajouté"); } catch(e){} }
 });
 
 Object.assign(ACT, ACC_ACT);
@@ -1980,7 +2003,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261102110104";
+const APP_VERSION = "20261103225647";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
