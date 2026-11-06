@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-Wk9ZvfPAn5LLWbWjIjIifjyLdXJhXH/xREuw+6paCSk='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-kpJXqrfB7MMOxVpfeio/HxfdokxPzUpdiFgPCOShCzA='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -417,6 +417,26 @@ function weightChart(list, days){
 /* ================= VUES ================= */
 const VIEWS = {};
 
+/* ---------- cardio / abdos en alternance ---------- */
+// Un jour d'entraînement sur deux : cardio puis abdos. Les jours jambes sont toujours abdos (pas de cardio).
+const estJambes = nom => /legs|lower|jambes/i.test(nom||"");
+const estTraining = d => { const sp = splitFor(d); return !!(sp && sp.nom && sp.nom.toLowerCase()!=="repos"); };
+function extraFor(d){
+  const X = (S.app.training||{}).extras || {}; if (X[d]) return {x:X[d], fait:true};
+  if (!estTraining(d)) return null;
+  const keys = Object.keys(X).filter(k=>k<d).sort(); if (!keys.length) return null;
+  let cur = keys[keys.length-1], prev = X[cur];
+  for (let k = addDays(cur,1); k<=d; k = addDays(k,1)){ if (!estTraining(k)) continue; let nx = X[k] || (prev==="cardio" ? "abdos" : "cardio"); if (!X[k] && nx==="cardio" && estJambes(splitFor(k).nom)) nx = "abdos"; if (k===d) return {x:nx, fait:false}; prev = nx; }
+  return null;
+}
+function prochainExtra(d){ for (let k = addDays(d,1), i=0; i<14; k = addDays(k,1), i++){ const e = extraFor(k); if (e) return {d:k, x:e.x}; } return null; }
+function extraDernier(d){ const X = (S.app.training||{}).extras || {}; const k = Object.keys(X).filter(x=>x<d).sort().pop(); return k ? '<div class="small muted">Dernier fait : '+(X[k]==="cardio"?"cardio":"abdos")+' le '+fShort(k)+'.</div>' : ''; }
+function extraHtml(d){ const e = extraFor(d), sp = splitFor(d) || {}; if (!e) return '<div class="small muted">Cardio / abdos : indique ce que tu fais aujourd\'hui pour lancer l\'alternance.</div>'+extraBtns(d, null);
+  const j = estJambes(sp.nom);
+  return '<div class="stack" style="gap:6px;padding:10px 12px;border-radius:12px;background:var(--surface2)"><div class="spread"><span><span class="small muted">Aujourd\'hui en plus : </span><b>'+(e.x==="cardio"?"Cardio":"Abdos")+'</b>'+(e.fait?' <span class="chip good">fait</span>':'')+'</span></div>'+
+    (j && e.x==="abdos" ? '<div class="small muted">Jour jambes : pas de cardio, au plus une marche inclinée ou un peu de vélo à la fin.</div>' : '')+extraDernier(d)+extraBtns(d, e.fait ? e.x : null)+'</div>'; }
+const extraBtns = (d, cur) => '<div class="row" style="gap:6px"><button class="btn sm'+(cur==="cardio"?' pri':'')+'" data-act="extraSet" data-d="'+d+'" data-k="cardio">J\'ai fait cardio</button><button class="btn sm'+(cur==="abdos"?' pri':'')+'" data-act="extraSet" data-d="'+d+'" data-k="abdos">J\'ai fait abdos</button></div>';
+
 /* ---------- ACCUEIL ---------- */
 function seancesDispo(){ const tr = S.app.training||{}; const L = []; Object.values(tr.jours||{}).map(j=>j&&j.nom).concat((tr.cycle&&tr.cycle.seances)||[]).forEach(n=>{ if (n && !L.some(x=>x.toLowerCase()===n.toLowerCase())) L.push(n); });
   if (!L.some(x=>x.toLowerCase()==="repos")) L.push("Repos"); return L.sort((a,b)=>(a.toLowerCase()==="repos")-(b.toLowerCase()==="repos")); }
@@ -446,15 +466,15 @@ VIEWS.accueil = { title:"QG", body(){
   if (S.ui.seanceEdit) h += seanceChoix(t);
   if (loading("app")) h += '<div class="muted">…</div>';
   else if (!sp) h += '<div class="empty">Ton split n\'est pas encore renseigné.</div>';
-  else if (dt==="off") h += '<div class="big">Repos</div><div class="muted small">Jour off, diet off.</div>';
+  else if (dt==="off"){ const nx = prochainExtra(t); h += '<div class="big">Repos</div><div class="muted small">Jour off, diet off.'+(nx?' Prochain : <b>'+(nx.x==="cardio"?"cardio":"abdos")+'</b> ('+(nx.d===addDays(t,1)?"demain":fShort(nx.d))+').':'')+'</div>'+extraDernier(t); }
   else {
     h += '<div class="spread"><div class="big">'+esc(sp.nom)+'</div><a class="btn pri" href="'+esc(tr.hevyLien||"hevy://")+'" target="_blank" rel="noopener">Ouvrir Hevy</a></div>';
     if (sp.detail) h += '<div class="small muted">'+esc(sp.detail)+'</div>';
-    if (tr.rappel) h += '<div class="small">'+esc(tr.rappel)+'</div>';
+    h += extraHtml(t);
     h += hevyBlock(t, sp.nom);
   }
   const pc = planFor(t);
-  if (pc && pc.cycleN) h += '<div class="small muted">Jour '+pc.jourCycle+' sur '+pc.cycleN+' du cycle</div><div class="row wrap-r small muted" style="gap:6px">'+Array.from({length:pc.cycleN},(_,k)=>addDays(t,k)).map((d,k)=>{ const j = splitFor(d); return '<span class="chip'+(k===0?' acc':'')+'">'+(k===0?"auj.":k===1?"dem.":DOWS[dow(d)]+" "+parseYmd(d).getDate())+' · '+esc(j?j.nom:"?")+'</span>'; }).join("")+'</div></section>';
+  if (pc && pc.cycleN) h += '<div class="small muted">Jour '+pc.jourCycle+' sur '+pc.cycleN+' du cycle</div><div class="row wrap-r small muted" style="gap:6px">'+Array.from({length:pc.cycleN},(_,k)=>addDays(t,k)).map((d,k)=>{ const j = splitFor(d); return '<span class="chip'+(k===0?' acc':'')+'">'+(k===0?"auj.":k===1?"dem.":DOWS[dow(d)]+" "+parseYmd(d).getDate())+' · '+esc(j?j.nom:"?")+(()=>{ const e = extraFor(d); return e ? ' · '+(e.x==="cardio"?"cardio":"abdos") : ''; })()+'</span>'; }).join("")+'</div></section>';
   else h += '<div class="row wrap-r small muted" style="gap:6px">'+[1,2,3,4,5,6,0].map(i=>{ const j=(tr.jours||{})[String(i)]; const on=(i===dow(t)); return '<span class="chip'+(on?' acc':'')+'">'+DOWS[i]+' · '+esc(j?j.nom:"?")+'</span>'; }).join("")+'</div></section>';
 
   B.seance = h; h = "";
@@ -1270,6 +1290,9 @@ const ACT = {
   corpsTab(d){ S.ui.corpsTab=d.k; render(); },
   dietTab(d){ S.ui.dietTab=d.k; render(); if (d.k==="riz") rizCalc(); },
   dietType(d){ S.ui.dietType=d.k; render(); },
+  async extraSet(d){ const tr = {...(S.app.training||{})}; delete tr.id; const X = {...(tr.extras||{})};
+    if (X[d.d]===d.k) delete X[d.d]; else X[d.d] = d.k; Object.keys(X).forEach(k=>{ if (k < addDays(today(),-120)) delete X[k]; });
+    tr.extras = X; S.app.training = {...S.app.training, extras:X}; render(); try { await put("app/training", tr); } catch(e){} },
   cuisson(d){ S.ui.cuisson = d.k; S.ui.riz = {}; render(); rizCalc(); },
   phaseSel(d){ S.ui.phase = d.k; render(); },
   seanceEdit(){ S.ui.seanceEdit = !S.ui.seanceEdit; render(); },
@@ -2023,7 +2046,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261106155827";
+const APP_VERSION = "20261106174739";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
