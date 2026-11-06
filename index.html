@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-3mFAV8JlTGVtWcNipJzQ6+L1jCyWzNDRwuRK9zuC928='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-Wk9ZvfPAn5LLWbWjIjIifjyLdXJhXH/xREuw+6paCSk='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -666,7 +666,7 @@ VIEWS.corps = { title:"Corps", body(){
 
 /* ---------- DIET ---------- */
 VIEWS.diet = { title:"Diet", body(){
-  let h = seg("dietTab", S.ui.dietTab, [["jour","Journal"],["plan","Template"],["riz","Riz"],["histo","Suivi"]]);
+  let h = seg("dietTab", S.ui.dietTab, [["jour","Journal"],["plan","Template"],["riz","Cuisson"],["histo","Suivi"]]);
   const D = S.app.diet;
   if (loading("app")) return h+'<div class="empty">Chargement…</div>';
   if (!D) return h+'<div class="empty">Ta diet n\'est pas encore dans l\'app. Demande à Claude de l\'ajouter.</div>';
@@ -681,27 +681,27 @@ VIEWS.diet = { title:"Diet", body(){
     h += '</section>';
     h += '<section class="card">'+((day&&day.repas)||[]).map((r,ri)=>{ const mm = mealMacros(r);
       return '<div class="meal tap" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'" data-i="'+ri+'" style="cursor:pointer"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
-        (r.items||[]).map(it=>{ const a=food(it.a)||{nom:it.a,unite:"g"}; const im=itemMacros(it); return '<div class="food"><span>'+esc(a.nom)+(it.etat?' <span class="muted small">('+esc(it.etat)+')</span>':'')+'</span><span class="g num">'+it.q+uLab(a,it.q)+'</span><span class="k num small">'+Math.round(im.kcal)+' kcal</span></div>'; }).join("")+
+        (r.items||[]).map(it=>{ const a=food(it.a)||{nom:it.a,unite:"g"}; const im=itemMacros(it); return '<div class="food"><span>'+esc(a.nom)+(it.etat?' <span class="muted small">('+esc(it.etat)+')</span>':'')+'</span><span class="g num">'+it.q+uLab(a,it.q)+(it.cru?' <span class="muted small">('+Math.round(it.cru)+' g cru)</span>':'')+'</span><span class="k num small">'+Math.round(im.kcal)+' kcal</span></div>'; }).join("")+
         '<div class="macros"><span>P <b class="num">'+r1(mm.p)+'</b></span><span>G <b class="num">'+r1(mm.g)+'</b></span><span>L <b class="num">'+r1(mm.l)+'</b></span>'+(r.note?'<span>'+esc(r.note)+'</span>':'')+'</div></div>'; }).join("")+'</section>';
     h += '<button class="btn full" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'">+ Ajouter un repas au jour '+(ty==="training"?"training":"off")+'</button>';
     h += '<div class="hint" style="text-align:center">Touche un repas pour le modifier. Chaque changement est noté dans l\'historique (onglet Suivi). Tes journaux déjà commencés ne changent pas.</div>';
     return h;
   }
   if (S.ui.dietTab==="riz"){
-    const cfg = S.app.config||{};
-    const portion = D.rizCruPortion||60, rp = rizPortions();
-    h += '<section class="card"><span class="eyebrow">Fournée de riz</span><form data-form="riz" class="stack" id="riz-form">'+
-      '<div class="grid2"><div class="field"><label for="rz-cru">Riz cru (g)</label><input class="inp num" id="rz-cru" inputmode="decimal" placeholder="300" value="'+rzv("rz-cru","")+'"></div><div class="field"><label for="rz-cuit">Pesée après cuisson (g)</label><input class="inp num" id="rz-cuit" inputmode="decimal" placeholder="1450" value="'+rzv("rz-cuit","")+'"></div></div>'+
-      '<div class="field"><label for="rz-tare">Poids du récipient (g)</label><input class="inp num" id="rz-tare" inputmode="decimal" value="'+rzv("rz-tare",cfg.tareRiz!=null?cfg.tareRiz:0)+'"></div>'+
-      '<div class="grid2"><div class="field"><label for="rz-pt">Portion crue training (g)</label><input class="inp num" id="rz-pt" inputmode="decimal" value="'+rzv("rz-pt",rp.training)+'"></div><div class="field"><label for="rz-po">Portion crue off (g)</label><input class="inp num" id="rz-po" inputmode="decimal" value="'+rzv("rz-po",rp.off)+'"></div></div>'+
-      '<div id="rz-out"></div><button class="btn pri" type="submit">Enregistrer la fournée</button></form><div class="hint">Les portions crues sont gardées pour les prochaines fois. Le poids du récipient est enregistré dès que tu le changes. À chaque fournée, les macros du « Riz jasmin cuit » sont recalculées avec son ratio.</div></section>';
-    if (S.riz.length){
-      S.ui.riz = S.ui.riz||{};
-      const L = S.riz.slice().sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
+    const cfg = S.app.config||{}, K = CUISSONS[S.ui.cuisson||"riz"], kind = S.ui.cuisson||"riz", rp = cuissonPortions(kind), al = (S.aliments||{})[K.cuit]||{};
+    h += seg("cuisson", kind, Object.entries(CUISSONS).map(([k,c])=>[k,c.label]));
+    h += '<section class="card"><span class="eyebrow">Fournée · '+K.label.toLowerCase()+'</span><form data-form="riz" class="stack" id="riz-form">'+
+      '<div class="grid2"><div class="field"><label for="rz-cru">'+K.crul+' (g)</label><input class="inp num" id="rz-cru" inputmode="decimal" placeholder="'+K.ph[0]+'" value="'+rzv("rz-cru","")+'"></div><div class="field"><label for="rz-cuit">Pesée après cuisson (g)</label><input class="inp num" id="rz-cuit" inputmode="decimal" placeholder="'+K.ph[1]+'" value="'+rzv("rz-cuit","")+'"></div></div>'+
+      '<div class="field"><label for="rz-tare">Poids du récipient (g)</label><input class="inp num" id="rz-tare" inputmode="decimal" value="'+rzv("rz-tare",(cfg.tares||{})[kind]!=null?cfg.tares[kind]:(kind==="riz"&&cfg.tareRiz!=null?cfg.tareRiz:0))+'"></div>'+
+      '<div class="grid2"><div class="field"><label for="rz-pt">Portion crue training (g)</label><input class="inp num" id="rz-pt" inputmode="decimal" value="'+rzv("rz-pt",rp.training??"")+'"></div><div class="field"><label for="rz-po">Portion crue off (g)</label><input class="inp num" id="rz-po" inputmode="decimal" value="'+rzv("rz-po",rp.off??"")+'"></div></div>'+
+      '<div id="rz-out"></div><button class="btn pri" type="submit">Enregistrer la fournée</button></form>'+
+      '<div class="hint">Ta template utilise le « '+esc(al.nom||K.cuit)+' » : à chaque fournée, ses grammes cuits sont recalculés depuis la portion crue, et ses macros avec le ratio'+(al.ratio?' (actuel ×'+String(al.ratio).replace(".",",")+')':'')+'. Les portions crues modifiées ici sont aussi changées dans la template.</div></section>';
+    const L = S.riz.filter(x=>(x.kind||"riz")===kind).sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
+    if (L.length){
       const avg = sum(L.slice(0,5),x=>x.ratio)/Math.min(5,L.length);
       h += '<section class="card"><div class="card-h"><span class="eyebrow">Tes fournées</span><span class="chip acc">ratio moyen '+avg.toFixed(2)+'</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Cru</th><th>Cuit</th><th>Ratio</th><th>Portion</th></tr></thead><tbody>'+
         L.slice(0,12).map(x=>{ const cell = (pc, cr, lab) => '<b>'+Math.round(pc)+' g</b> cuit'+(lab?' <span class="muted">'+lab+'</span>':'')+'<br><span class="muted">= '+Math.round(cr)+' g cru</span>';
-          const port = x.ptCrue!=null ? cell(x.ptCrue*x.ratio, x.ptCrue, "training")+'<br>'+cell(x.poCrue*x.ratio, x.poCrue, "off") : cell(x.portionCuite, x.portionCrue || (x.ratio ? x.portionCuite/x.ratio : portion), "");
+          const port = x.ptCrue!=null ? cell(x.ptCrue*x.ratio, x.ptCrue, "training")+(x.poCrue!=null?'<br>'+cell(x.poCrue*x.ratio, x.poCrue, "off"):'') : x.portionCuite ? cell(x.portionCuite, x.portionCrue || x.portionCuite/x.ratio, "") : '';
           return '<tr><td>'+fShort(x.date)+'</td><td>'+x.cru+'</td><td>'+Math.round(x.cuit)+'</td><td>'+x.ratio.toFixed(2)+'</td><td style="white-space:nowrap">'+port+'</td></tr>'; }).join("")+'</tbody></table></div></section>';
     }
     return h;
@@ -795,22 +795,24 @@ function suiviView(){
   h += '<div class="hint">Respect = calories mangées par rapport à la template du jour. Vert entre 95 et 105 %.</div></section>';
   return h;
 }
-function rizPortions(){ const D = S.app.diet||{}, rc = D.rizCru||{};
-  const tpl = ty => { let q = null; (((D.jours||{})[ty]||{}).repas||[]).forEach(r=>(r.items||[]).forEach(i=>{ const f = food(i.a); if (f && /riz/i.test(f.nom) && /cru/i.test(f.nom) && !/creme|crème|galette/i.test(f.nom)) q = (q||0)+i.q; })); return q; };
-  return {training: rc.training ?? tpl("training") ?? D.rizCruPortion ?? 60, off: rc.off ?? tpl("off") ?? D.rizCruPortion ?? 60}; }
+// Aliments cuisinés à l'avance : la template garde la portion crue (it.cru) et le poids cuit suit la dernière fournée.
+const CUISSONS = { riz:{label:"Riz", cru:"rizjasmin", cuit:"rizjasmincuit", crul:"Riz cru", ph:["500","1300"]}, patate:{label:"Patates air fryer", cru:"patate", cuit:"patateairfryer", crul:"Patates crues", ph:["1000","800"]} };
+function cuissonPortions(kind){ const D = S.app.diet||{}, id = CUISSONS[kind].cuit, out = {};
+  ["training","off"].forEach(ty=>{ (((D.jours||{})[ty]||{}).repas||[]).forEach(r=>(r.items||[]).forEach(i=>{ if (i.a===id && out[ty]==null) out[ty] = i.cru ?? null; })); });
+  return out; }
 function rizCalc(){
   const out = document.getElementById("rz-out"); if (!out) return null;
   const cru = num(val("rz-cru")), brut = num(val("rz-cuit")), tare = num(val("rz-tare"))||0, pt = num(val("rz-pt")), po = num(val("rz-po"));
   if (!cru || !brut || brut-tare<=0){ out.innerHTML = '<div class="empty">Entre le poids cru et la pesée après cuisson.</div>'; return null; }
-  const cuit = brut-tare, ratio = cuit/cru, ct = pt ? pt*ratio : null, co = po ? po*ratio : null;
+  const cuit = brut-tare, ratio = cuit/cru, ct = pt ? pt*ratio : null, co = po ? po*ratio : null, kind = S.ui.cuisson||"riz";
   out.innerHTML = '<div class="grid2"><div class="stat" style="align-items:center;padding:14px"><span class="k">Portion training</span><span class="big num" style="font-size:44px">'+(ct?Math.round(ct):"–")+' g</span><span class="small muted">cuit, pour '+(pt||"–")+' g cru</span></div><div class="stat" style="align-items:center;padding:14px"><span class="k">Portion off</span><span class="big num" style="font-size:44px">'+(co?Math.round(co):"–")+' g</span><span class="small muted">cuit, pour '+(po||"–")+' g cru</span></div></div>'+
     '<div class="grid2"><div class="stat"><span class="k">Riz cuit net</span><span class="v num">'+Math.round(cuit)+' g</span></div><div class="stat"><span class="k">Ratio</span><span class="v num">×'+ratio.toFixed(2)+'</span></div></div>';
-  return {cru, brut, tare, cuit, ratio, ptCrue:pt, poCrue:po, portionCrue:pt, portionCuite:ct};
+  return {kind, cru, brut, tare, cuit, ratio, ptCrue:pt, poCrue:po, portionCrue:pt, portionCuite:ct};
 }
 const val = id => { const e = document.getElementById(id); return e ? e.value : ""; };
 document.addEventListener("input", e => { if (e.target.id && e.target.id.startsWith("rz-")) { S.ui.riz[e.target.id] = e.target.value; rizCalc(); } });
 document.addEventListener("change", e => { if (e.target.id!=="rz-tare") return; const t = num(e.target.value); if (t==null || t<0) return;
-  const cfg = {...(S.app.config||{})}; delete cfg.id; if (cfg.tareRiz===t) return; cfg.tareRiz = t; S.app.config = {...(S.app.config||{}), tareRiz:t}; put("app/config", cfg).then(()=>toast("Poids du récipient enregistré : "+t+" g")).catch(()=>{}); });
+  const kind = S.ui.cuisson||"riz", cfg = {...(S.app.config||{})}; delete cfg.id; if ((cfg.tares||{})[kind]===t) return; cfg.tares = {...(cfg.tares||{}), [kind]:t}; if (kind==="riz") cfg.tareRiz = t; S.app.config = {...(S.app.config||{}), tares:cfg.tares, tareRiz:cfg.tareRiz}; put("app/config", cfg).then(()=>toast("Poids du récipient enregistré : "+t+" g")).catch(()=>{}); });
 const rzv = (id, def) => esc(S.ui.riz[id]!=null ? S.ui.riz[id] : def);
 
 /* ---------- ARGENT ---------- */
@@ -1152,7 +1154,8 @@ SHEETS.tplRepas = { html(ds){
   async save(ds){ const dr = S.sheet.draft; syncDraft(); const n = document.getElementById("s-rnote"); if (n) dr.note = n.value.trim(); if (!dr.note) delete dr.note;
     dr.nom = (dr.nom||"").trim() || "Repas"; dr.items = dr.items.filter(x=>x.q>0); if (!dr.items.length) return toast("Ajoute au moins un aliment.", true);
     const both = !!(document.getElementById("s-both")||{}).checked, ty = ds.ty || "training", D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; D.jours = D.jours || {};
-    const clean = {heure:dr.heure||"", nom:dr.nom, items:dr.items.map(x=>({a:x.a, q:x.q, ...(x.etat?{etat:x.etat}:{})})), ...(dr.note?{note:dr.note}:{})};
+    const crud = x => { const al = food(x.a); return Object.values(CUISSONS).some(c=>c.cuit===x.a) && al && al.ratio ? {cru:Math.round(x.q/al.ratio)} : {}; };
+    const clean = {heure:dr.heure||"", nom:dr.nom, items:dr.items.map(x=>({a:x.a, q:x.q, ...(x.etat?{etat:x.etat}:{}), ...crud(x)})), ...(dr.note?{note:dr.note}:{})};
     const appliquer = (t, i) => { const R = ((D.jours[t] = D.jours[t] || {repas:[]}).repas = D.jours[t].repas || []); if (i!=null && i>=0) R[i] = clean; else R.push(clean); sortRepas(R); };
     const ancien = ds.i!=null && ds.i!=="" ? ((D.jours[ty]||{}).repas||[])[+ds.i] : null;
     appliquer(ty, ancien ? +ds.i : null);
@@ -1267,6 +1270,7 @@ const ACT = {
   corpsTab(d){ S.ui.corpsTab=d.k; render(); },
   dietTab(d){ S.ui.dietTab=d.k; render(); if (d.k==="riz") rizCalc(); },
   dietType(d){ S.ui.dietType=d.k; render(); },
+  cuisson(d){ S.ui.cuisson = d.k; S.ui.riz = {}; render(); rizCalc(); },
   phaseSel(d){ S.ui.phase = d.k; render(); },
   seanceEdit(){ S.ui.seanceEdit = !S.ui.seanceEdit; render(); },
   async seanceSet(d){ const day = d.d, tr = {...(S.app.training||{})}; delete tr.id; const avant = dayType(day);
@@ -1400,13 +1404,17 @@ document.addEventListener("submit", async e => {
     if (k==="tension"){ const sys=num(val("t-sys")), dia=num(val("t-dia")), pul=num(val("t-pul")); if (sys==null||dia==null) return toast("Systolique et diastolique obligatoires.",true);
       await put("tension/"+today(), {date:today(), sys, dia, pul}); toast("Tension notée"); return; }
     if (k==="riz"){ const r = rizCalc(); if (!r) return toast("Entre le poids cru et la pesée cuite.",true);
-      await put("riz/"+uid(), {date:today(), ...r});
-      const cfg = {...(S.app.config||{})}; delete cfg.id; if (cfg.tareRiz!==r.tare){ cfg.tareRiz = r.tare; await put("app/config", cfg); }
-      const D = {...(S.app.diet||{})}; delete D.id; const rc = {training:r.ptCrue, off:r.poCrue}; if (JSON.stringify(D.rizCru||{})!==JSON.stringify(rc)){ D.rizCru = rc; await put("app/diet", D); }
-      // Le riz jasmin cuit suit le ratio de la dernière fournée : valeurs crues divisées par le ratio.
-      const cru = (S.aliments||{}).rizjasmin, cuitA = (S.aliments||{}).rizjasmincuit;
-      if (cru && r.ratio>0){ const R = x => Math.round(x/r.ratio*10)/10; const o = {...(cuitA||{nom:"Riz jasmin cuit", unite:"g"}), kcal:Math.round(cru.kcal/r.ratio), p:R(cru.p), g:R(cru.g), l:R(cru.l), ratio:Math.round(r.ratio*1000)/1000, majLe:today()}; delete o.id; await put("aliments/rizjasmincuit", o); }
-      S.ui.riz = {}; toast("Fournée enregistrée : "+(r.ptCrue?Math.round(r.ptCrue*r.ratio)+" g (training)":"")+(r.poCrue?" · "+Math.round(r.poCrue*r.ratio)+" g (off)":"")+" · riz jasmin cuit mis à jour"); return; }
+      await put("riz/"+uid(), {date:today(), ...r}); const K = CUISSONS[r.kind];
+      const cfg = {...(S.app.config||{})}; delete cfg.id; if ((cfg.tares||{})[r.kind]!==r.tare){ cfg.tares = {...(cfg.tares||{}), [r.kind]:r.tare}; if (r.kind==="riz") cfg.tareRiz = r.tare; await put("app/config", cfg); }
+      // 1) macros de l'aliment cuit = valeurs crues / ratio
+      const cru = (S.aliments||{})[K.cru] || food(K.cru), cuitA = (S.aliments||{})[K.cuit];
+      if (cru && r.ratio>0){ const R = x => Math.round(x/r.ratio*10)/10; const o = {...(cuitA||{nom:K.label+" cuit", unite:"g"}), kcal:Math.round(cru.kcal/r.ratio*10)/10, p:R(cru.p), g:R(cru.g), l:R(cru.l), ratio:Math.round(r.ratio*1000)/1000, majLe:today()}; delete o.id; await put("aliments/"+K.cuit, o); S.aliments = {...S.aliments, [K.cuit]:o}; }
+      // 2) grammes cuits de la template = portion crue x ratio
+      const D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; let n = 0;
+      ["training","off"].forEach(ty=>{ const pc = ty==="training" ? r.ptCrue : r.poCrue; let first = true;
+        (((D.jours||{})[ty]||{}).repas||[]).forEach(m=>(m.items||[]).forEach(i=>{ if (i.a!==K.cuit) return; if (first && pc){ i.cru = pc; } first = false; if (i.cru){ i.q = Math.round(i.cru*r.ratio); n++; } })); });
+      if (n){ D.majLe = today(); await put("app/diet", D); }
+      S.ui.riz = {}; toast("Fournée enregistrée · template mise à jour : "+(r.ptCrue?Math.round(r.ptCrue*r.ratio)+" g training":"")+(r.poCrue?" · "+Math.round(r.poCrue*r.ratio)+" g off":"")); return; }
   } catch(err){}
 });
 document.addEventListener("keydown", e => { if (e.key==="Escape" && S.sheet) closeSheet(); });
@@ -2015,7 +2023,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261106145902";
+const APP_VERSION = "20261106155827";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
