@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-kpJXqrfB7MMOxVpfeio/HxfdokxPzUpdiFgPCOShCzA='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-DNsucnWpDK3W11SJqvI0HkpoM4lNFfQqSvzx+RJZ/Tg='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -349,11 +349,17 @@ const ZERO = {kcal:0,p:0,g:0,l:0};
 function mealMacros(m){ return (m.items||[]).map(itemMacros).reduce(addM,ZERO); }
 function dayMacros(day){ return (day && day.repas || []).map(mealMacros).reduce(addM,ZERO); }
 
+// Mois budgétaire : il commence le jour de paie (fin de mois). Ce qui est payé juste après la paie compte pour le mois suivant.
+const paieJour = () => { const j = (S.app.config||{}).paieJour; return j>=1 && j<=31 ? j : 25; };
+const moisBudget = d => { const m = monthOf(d), j = +d.slice(8,10); return j >= Math.min(paieJour(), dim(m)) ? addMonths(m,1) : m; };
+const periodeMois = M => { const p = addMonths(M,-1); return {debut: p+"-"+pad(Math.min(paieJour(), dim(p))), fin: addDays(M+"-"+pad(Math.min(paieJour(), dim(M))), -1)}; };
+const soldeDispo = () => { const s0 = (S.app.config||{}).solde; return s0 && typeof s0.montant==="number" ? s0 : null; };
 function finance(M){
+  const P = periodeMois(M), inP = d => d && d>=P.debut && d<=P.fin;
   const paid = (S.mois[M] && S.mois[M].payes) || {}, mt = (S.mois[M] && S.mois[M].montants) || {};
   const fixes = S.fixes.filter(f=>f.actif!==false).map(f=>({...f, habituel:f.montant, montant: typeof mt[f.id]==="number" ? mt[f.id] : null, paye:!!paid[f.id], echeance: f.jour ? M+"-"+pad(Math.min(dim(M),f.jour)) : null}));
   const fact = S.factures.filter(f=>f.mois===M || (!f.paye && (f.mois||"")<M));
-  const dep = S.depenses.filter(d=>d.date && d.date.startsWith(M));
+  const dep = S.depenses.filter(d=>inP(d.date));
   const tF = sum(fixes,f=>f.montant), tFa = sum(fact,f=>f.montant), tD = sum(dep,d=>d.montant);
   const resteFixes = sum(fixes.filter(f=>!f.paye),f=>f.montant);
   const resteFact = sum(fact.filter(f=>!f.paye),f=>f.montant);
@@ -452,7 +458,7 @@ VIEWS.accueil = { title:"QG", body(){
   const pToday = S.poids[t];
   const dm = dayMacros(S.app.diet && S.app.diet.jours && S.app.diet.jours[dt]);
   const agDoc = dayDoc(t), items = sortT(agDoc.taches.slice());
-  const F = finance(monthOf(t)); const due = dueSoon();
+  const F = finance(moisBudget(t)); const due = dueSoon();
   const wk = weekDoc(mondayOf(t)).jours[String((dow(t)+6)%7)] || {};
   const tr = S.app.training || {};
   const B = {}; let h = "";
@@ -502,7 +508,8 @@ VIEWS.accueil = { title:"QG", body(){
 
   B.diet = h; h = "";
   // Argent
-  h += '<section class="card tap" data-act="go" data-v="argent" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Argent · '+fMonth(monthOf(t))+'</span>'+(F.sansMontant?'<span class="chip warn">'+F.sansMontant+' montant(s) à saisir</span>':'')+'</div>';
+  h += '<section class="card tap" data-act="go" data-v="argent" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Argent · '+fMonth(moisBudget(t))+'</span>'+(F.sansMontant?'<span class="chip warn">'+F.sansMontant+' montant(s) à saisir</span>':'')+'</div>';
+  { const so = soldeDispo(); if (so) h += '<div class="small muted">Argent disponible : <b class="num">'+chf0(so.montant)+'</b> · après paiements : <b class="num">'+chf0(so.montant-F.reste)+'</b></div>'; }
   h += '<div class="grid2"><div class="stat"><span class="k">Reste à payer</span><span class="v num">'+chf0(F.reste)+'</span></div><div class="stat"><span class="k">Reste à vivre</span><span class="v num">'+(F.vivre==null?"–":chf0(F.vivre))+'</span></div></div>';
   if (due.length) h += '<div class="list">'+due.slice(0,4).map(d=>'<div class="li"><span class="chip '+(d.d<t?'bad':'warn')+'">'+(d.d<t?"En retard":fShort(d.d))+'</span><span class="t grow">'+esc(d.nom)+'</span><span class="amt num">'+(typeof d.montant==="number"?chf(d.montant):"–")+'</span></div>').join("")+'</div>';
   h += '</section>';
@@ -837,11 +844,15 @@ const rzv = (id, def) => esc(S.ui.riz[id]!=null ? S.ui.riz[id] : def);
 
 /* ---------- ARGENT ---------- */
 VIEWS.argent = { title:"Argent", body(){
-  const M = S.ui.mois, F = finance(M);
-  let h = '<div class="spread"><button class="icon-btn" data-act="mois" data-n="-1" aria-label="Mois précédent">‹</button><h2 class="h2 cap">'+fMonth(M)+'</h2><button class="icon-btn" data-act="mois" data-n="1" aria-label="Mois suivant">›</button></div>';
+  if (!S.ui.moisInit && S.app.config){ S.ui.mois = moisBudget(today()); S.ui.moisInit = true; }
+  const M = S.ui.mois, F = finance(M), P = periodeMois(M);
+  let h = '<div class="spread"><button class="icon-btn" data-act="mois" data-n="-1" aria-label="Mois précédent">‹</button><div style="text-align:center"><h2 class="h2 cap">'+fMonth(M)+'</h2><div class="small muted">du '+fShort(P.debut)+' au '+fShort(P.fin)+'</div></div><button class="icon-btn" data-act="mois" data-n="1" aria-label="Mois suivant">›</button></div>';
   h += seg("argentTab", S.ui.argentTab, [["resume","Résumé"],["fixes","Mensuel"],["nouvelles","Factures"],["achats","Achats"],["dettes","On me doit"],["depenses","Dépenses"]]).replace('class="seg seg-s"','class="seg seg-g3"');
   if (loading("fixes")) return h+'<div class="empty">Chargement…</div>';
   if (S.ui.argentTab==="resume"){
+    const so = soldeDispo();
+    h += '<section class="card tap" data-act="sheet" data-s="solde" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Argent disponible</span><span class="small muted">'+(so?'màj '+fShort(so.date):'')+'</span></div><div class="big num">'+(so?chf(so.montant):'–')+'</div>'+
+      (so ? '<div class="small muted">Après ce qu\'il reste à payer ce mois : <b class="num '+(so.montant-F.reste<0?'up':'')+'">'+chf(so.montant-F.reste)+'</b></div>' : '<div class="small muted">Touche pour entrer l\'argent que tu as actuellement.</div>')+'</section>';
     h += '<section class="card"><div class="card-h"><span class="eyebrow">Reste à payer</span><button class="btn sm" data-act="sheet" data-s="revenu">'+(F.revenu==null?"Saisir le revenu":"Revenu "+chf0(F.revenu))+'</button></div><div class="big num">'+chf(F.reste)+'</div>';
     const pct = F.total ? Math.round(F.paye/F.total*100) : 0;
     h += '<div class="bar"><i style="width:'+pct+'%;background:var(--good)"></i></div><div class="small muted">'+chf0(F.paye)+' réglés sur '+chf0(F.total)+' engagés ce mois</div>';
@@ -862,7 +873,7 @@ VIEWS.argent = { title:"Argent", body(){
     return h;
   }
   if (S.ui.argentTab==="nouvelles"){
-    const aPayer = S.factures.filter(f=>!f.paye), payees = S.factures.filter(f=>f.paye && (f.payeLe?monthOf(f.payeLe):f.mois)===M);
+    const aPayer = S.factures.filter(f=>!f.paye), payees = S.factures.filter(f=>f.paye && (f.payeLe?moisBudget(f.payeLe):f.mois)===M);
     const fRow = f => { const late = !f.paye && f.echeance && f.echeance<today();
       return '<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"facturePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="facture" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.echeance?"échéance "+fShort(f.echeance)+" · ":"")+esc(f.categorie||"")+'</div></div>'+(late?'<span class="chip bad">En retard</span>':'')+'<span class="amt num">'+chf(f.montant)+'</span></div>'; };
     h += '<section class="card"><div class="card-h"><span class="eyebrow">À payer · '+chf0(sum(aPayer,f=>f.montant))+'</span><button class="btn sm pri" data-act="sheet" data-s="facture">+ Ajouter</button></div>';
@@ -1097,15 +1108,21 @@ SHEETS.facture = { html(ds){ const f = ds.id ? S.factures.find(x=>x.id===ds.id)|
   async del(ds){ await rm("factures/"+ds.id); toast("Facture supprimée"); } };
 
 SHEETS.depense = { html(ds){ const d = ds.id ? S.depenses.find(x=>x.id===ds.id)||{} : {};
-  const defDate = d.date || (monthOf(today())===S.ui.mois ? today() : S.ui.mois+"-01");
+  const defDate = d.date || (moisBudget(today())===S.ui.mois ? today() : periodeMois(S.ui.mois).debut);
   return '<h2 class="h2">'+(ds.id?"Dépense":"Nouvelle dépense")+'</h2><div class="grid2">'+fld("s-montant","Montant (CHF)",d.montant,'inputmode="decimal" placeholder="24.90"')+fld("s-date","Date",defDate,'type="date"')+'</div>'+catSel("s-cat",d.categorie||"Bouffe")+fld("s-note","Note",d.note,'placeholder="Migros, Coop, resto…"')+'<label class="row small" style="gap:8px"><input type="checkbox" id="s-evit"'+(d.evitable?" checked":"")+' style="width:20px;height:20px"> Dépense évitable</label>'+sheetBtns(!!ds.id); },
   async save(ds){ const m = num(val("s-montant")); if (m==null) return toast("Entre un montant.",true); const id = ds.id||uid();
     await put("depenses/"+id, {id, montant:m, date:val("s-date")||today(), categorie:val("s-cat"), note:val("s-note").trim(), evitable:document.getElementById("s-evit").checked}); toast("Dépense enregistrée"); },
   async del(ds){ await rm("depenses/"+ds.id); toast("Dépense supprimée"); } };
 
 SHEETS.revenu = { html(){ const M = S.ui.mois; const r = S.mois[M]&&S.mois[M].revenu;
-  return '<h2 class="h2">Revenu de '+fMonth(M)+'</h2>'+fld("s-rev","Montant (CHF)",r,'inputmode="decimal"')+'<div class="hint">Sert à calculer ton reste à vivre.</div>'+sheetBtns(false); },
-  async save(){ const M = S.ui.mois; await put("mois/"+M, {...(S.mois[M]||{}), revenu:num(val("s-rev"))}); toast("Revenu enregistré"); } };
+  return '<h2 class="h2">Revenu de '+fMonth(M)+'</h2>'+fld("s-rev","Montant (CHF)",r,'inputmode="decimal"')+fld("s-paie","Jour où tu reçois ton argent",paieJour(),'inputmode="numeric" placeholder="25"')+'<div class="hint">Le mois commence ce jour-là : ce que tu paies juste après avoir été payé compte pour le mois suivant (paie du 25 octobre → mois de novembre).</div>'+sheetBtns(false); },
+  async save(){ const M = S.ui.mois, o = {...(S.mois[M]||{}), revenu:num(val("s-rev"))}; delete o.id; await put("mois/"+M, o);
+    const j = num(val("s-paie")); if (j>=1 && j<=31 && j!==paieJour()){ const cfg = {...(S.app.config||{})}; delete cfg.id; cfg.paieJour = j; await put("app/config", cfg); S.ui.moisInit = false; }
+    toast("Enregistré"); } };
+SHEETS.solde = { html(){ const so = soldeDispo();
+  return '<h2 class="h2">Argent disponible</h2>'+fld("s-solde","Montant actuel (CHF)",so?so.montant:"",'inputmode="decimal" placeholder="1250"')+'<div class="hint">Ce que tu as sur ton compte maintenant. L\'app affiche aussi ce qu\'il te reste une fois les paiements du mois réglés.</div>'+sheetBtns(false); },
+  async save(){ const v = num(val("s-solde")); if (v==null) return toast("Entre un montant.", true);
+    const cfg = {...(S.app.config||{})}; delete cfg.id; cfg.solde = {montant:v, date:today()}; await put("app/config", cfg); toast("Argent disponible enregistré"); } };
 
 SHEETS.objectif = { html(ds){ return '<h2 class="h2">Objectif · '+DOWL[dow(addDays(S.ui.ecoleWeek,+ds.i))]+'</h2>'+fld("s-obj","Objectif","",'placeholder="Donner 2 corrections"')+sheetBtns(false); },
   async save(ds){ const t = val("s-obj").trim(); if (!t) return toast("Objectif vide.",true); await editDay(+ds.i, j=>{ j.objectifs=(j.objectifs||[]).concat({id:uid(),texte:t,fait:false}); }); toast("Objectif ajouté"); } };
@@ -2046,7 +2063,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261106174739";
+const APP_VERSION = "20261109171606";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
