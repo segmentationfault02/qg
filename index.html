@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-DNsucnWpDK3W11SJqvI0HkpoM4lNFfQqSvzx+RJZ/Tg='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-AlHFF3ch+HgEqO5Gj5AfcZfCn0xzAP5jvDyyEv3Cl2I='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -915,10 +915,10 @@ VIEWS.ecole = { title:"École 42", body(){
   const E = S.app.ecole || {}; const mon = S.ui.ecoleWeek, W = weekDoc(mon);
   let h = '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(E.pace||"Cursus")+'</span>'+(E.deadline?'<span class="chip warn">deadline '+fShort(E.deadline)+'</span>':'')+'</div>';
   h += '<div class="spread"><div><div class="small muted">Points de correction</div><div class="big num">'+(typeof E.points==="number"?E.points:"–")+'</div></div><div class="row"><button class="icon-btn" data-act="pts" data-n="-1" aria-label="Retirer un point">−</button><button class="icon-btn" data-act="pts" data-n="1" aria-label="Ajouter un point">+</button></div></div></section>';
-  h += '<section class="card"><div class="card-h"><span class="eyebrow">Projets</span><button class="btn sm" data-act="sheet" data-s="projet">+ Projet</button></div>';
+  h += '<section class="card"><div class="card-h"><span class="eyebrow">Projets'+(E.cercle?' · cercle '+esc(E.cercle):'')+'</span><button class="btn sm" data-act="sheet" data-s="projet">+ Projet</button></div>';
   const P = E.projets||[]; const ST = {afaire:["À faire","bad"],pousser:["À pousser","warn"],valide:["Validé","good"]};
   h += P.length ? '<div class="list">'+P.map(p=>{ const st = ST[p.statut]||ST.afaire; return '<div class="li"><div class="grow tap" data-act="sheet" data-s="projet" data-id="'+p.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(p.nom)+'</div>'+(p.note?'<div class="small muted">'+esc(p.note)+'</div>':'')+'</div>'+(p.pts?'<span class="small muted num">'+p.pts+' pts</span>':'')+'<button class="chip '+st[1]+'" style="border:0" data-act="projStat" data-id="'+p.id+'">'+st[0]+'</button></div>'; }).join("")+'</div>' : '<div class="empty">Aucun projet.</div>';
-  h += '<div class="hint">Touche le statut pour le faire avancer.</div></section>';
+  h += '<div class="hint">Touche le statut pour le faire avancer, ou le projet pour le modifier ou le supprimer.</div>'+(P.some(p=>p.statut==="valide")?'<button class="btn sm ghost" data-act="projClean">Retirer les projets validés</button>':'')+'</section>';
   const pushCost = sum(P.filter(p=>p.statut!=="valide"),p=>p.pts);
   if (pushCost && typeof E.points==="number") h += '<div class="'+(E.points>=pushCost?"small muted":"banner")+'" style="text-align:center">Pousser tout ce qui reste coûte '+pushCost+' points'+(E.points<pushCost?' : il t\'en manque '+(pushCost-E.points)+'.':'. Tu les as.')+'</div>';
   h += '<div class="spread"><button class="icon-btn" data-act="semaine" data-n="-7" aria-label="Semaine précédente">‹</button><h2 class="h2">Semaine du '+fShort(mon)+'</h2><button class="icon-btn" data-act="semaine" data-n="7" aria-label="Semaine suivante">›</button></div>';
@@ -1341,6 +1341,7 @@ const ACT = {
   async fixePaye(d){ const M = S.ui.mois; const m = S.mois[M]||{}; const p = {...(m.payes||{})}; if (p[d.id]) delete p[d.id]; else p[d.id]=today(); const o = {...m,payes:p}; delete o.id; try{ await put("mois/"+M,o); }catch(e){} },
   async facturePaye(d){ const f = S.factures.find(x=>x.id===d.id); if (!f) return; try{ await put("factures/"+f.id,{...f,paye:!f.paye,payeLe:!f.paye?today():null}); }catch(e){} },
   async pts(d){ const E = {...(S.app.ecole||{})}; E.points = Math.max(0,(typeof E.points==="number"?E.points:0)+(+d.n)); try{ await put("app/ecole",E); }catch(e){} },
+  async projClean(){ const E = {...(S.app.ecole||{})}; delete E.id; const n = (E.projets||[]).filter(p=>p.statut==="valide").length; E.projets = (E.projets||[]).filter(p=>p.statut!=="valide"); try { await put("app/ecole", E); toast(n+" projet"+(n>1?"s":"")+" validé"+(n>1?"s":"")+" retiré"+(n>1?"s":"")); } catch(e){} },
   async projStat(d){ const E = {...(S.app.ecole||{})}; const nx = {afaire:"pousser",pousser:"valide",valide:"afaire"}; E.projets=(E.projets||[]).map(p=>p.id===d.id?{...p,statut:nx[p.statut]||"pousser"}:p); try{ await put("app/ecole",E); }catch(e){} },
   async lieu(d){ try{ await editDay(+d.i, j=>{ j.lieu = j.lieu===d.k ? null : d.k; }); }catch(e){} },
   async objDone(d){ try{ await editDay(+d.i, j=>{ j.objectifs=(j.objectifs||[]).map(o=>o.id===d.id?{...o,fait:!o.fait}:o); }); }catch(e){} },
@@ -2063,7 +2064,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261109171606";
+const APP_VERSION = "20261112092932";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
