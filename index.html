@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-AlHFF3ch+HgEqO5Gj5AfcZfCn0xzAP5jvDyyEv3Cl2I='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-rVyCqk+R69xXdxNo8EJEFbc5GR5xLHVPwr8A3mT9iHc='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -288,12 +288,15 @@ function toast(msg, err){
 
 /* ---------- données dérivées ---------- */
 // Séance prévue par le programme : cycle de N jours s'il existe, sinon jour de la semaine.
-function planFor(dateS){
+function planFor(dateS, ign){
   const t = S.app.training || {}; const c = t.cycle;
   if (c && c.debut && Array.isArray(c.seances) && c.seances.length && dateS >= c.debut){
-    const n = c.seances.length, i = ((Math.round((parseYmd(dateS)-parseYmd(c.debut))/86400000) % n) + n) % n, nom = c.seances[i];
+    // Recalage : quand une séance est changée, le cycle repart de là (le lendemain suit la nouvelle séance).
+    const rec = (c.recalages||[]).filter(r=>r.date<=dateS && r.src!==ign).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0).pop();
+    const ref = rec ? rec.date : c.debut, i0 = rec ? rec.index : 0;
+    const n = c.seances.length, i = (((i0 + Math.round((parseYmd(dateS)-parseYmd(ref))/86400000)) % n) + n) % n, nom = c.seances[i];
     const base = Object.values(t.jours||{}).find(j=>j && j.nom && j.nom.toLowerCase()===nom.toLowerCase()) || {};
-    return {...base, nom, jourCycle:i+1, cycleN:n}; }
+    return {...base, nom, jourCycle:i+1, cycleN:n, ...(rec && rec.src===dateS && rec.date===dateS ? {change:true} : {})}; }
   return (t.jours||{})[String(dow(dateS))] || null;
 }
 function splitFor(dateS){
@@ -447,7 +450,7 @@ const extraBtns = (d, cur) => '<div class="row" style="gap:6px"><button class="b
 function seancesDispo(){ const tr = S.app.training||{}; const L = []; Object.values(tr.jours||{}).map(j=>j&&j.nom).concat((tr.cycle&&tr.cycle.seances)||[]).forEach(n=>{ if (n && !L.some(x=>x.toLowerCase()===n.toLowerCase())) L.push(n); });
   if (!L.some(x=>x.toLowerCase()==="repos")) L.push("Repos"); return L.sort((a,b)=>(a.toLowerCase()==="repos")-(b.toLowerCase()==="repos")); }
 function seanceChoix(d){ const sp = splitFor(d), cur = sp ? sp.nom.toLowerCase() : "";
-  const def = planFor(d);
+  const def = planFor(d, d);
   return '<div class="stack" style="gap:6px"><div class="small muted">Qu\'est-ce que tu fais '+(d===today()?"aujourd\'hui":fShort(d))+' ?</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">'+
     seancesDispo().map(n=>'<button class="btn sm'+(n.toLowerCase()===cur?' pri':'')+'" data-act="seanceSet" data-d="'+d+'" data-k="'+esc(n)+'">'+esc(n)+'</button>').join("")+'</div>'+
     (sp && sp.change ? '<button class="btn sm ghost" data-act="seanceSet" data-d="'+d+'" data-k="">Remettre le programme ('+esc(def?def.nom:"?")+')</button>' : '')+'</div>'; }
@@ -1313,11 +1316,22 @@ const ACT = {
   cuisson(d){ S.ui.cuisson = d.k; S.ui.riz = {}; render(); rizCalc(); },
   phaseSel(d){ S.ui.phase = d.k; render(); },
   seanceEdit(){ S.ui.seanceEdit = !S.ui.seanceEdit; render(); },
-  async seanceSet(d){ const day = d.d, tr = {...(S.app.training||{})}; delete tr.id; const avant = dayType(day);
-    const ch = {...(tr.changes||{})}; const def = planFor(day);
-    if (!d.k || (def && def.nom && def.nom.toLowerCase()===d.k.toLowerCase())) delete ch[day]; else ch[day] = d.k;
+  async seanceSet(d){ const day = d.d, tr = JSON.parse(JSON.stringify(S.app.training||{})); delete tr.id; const avant = dayType(day);
+    const ch = {...(tr.changes||{})}; const c = tr.cycle;
+    if (c && Array.isArray(c.seances) && c.seances.length && day >= c.debut){
+      // on annule d'abord ce que ce jour avait déjà changé, puis on recale le cycle
+      delete ch[day]; c.recalages = (c.recalages||[]).filter(r=>r.src!==day);
+      S.app.training = {...S.app.training, cycle:c, changes:ch};
+      const def = planFor(day), k = (d.k||"").toLowerCase(), L = c.seances.map(x=>x.toLowerCase());
+      if (k && def && def.nom.toLowerCase()!==k){
+        const cur = def.jourCycle-1;
+        if (k==="repos"){ ch[day] = d.k; c.recalages.push({date:addDays(day,1), index:cur, src:day}); }
+        else if (L.includes(k)){ let j = -1; for (let s2=0; s2<L.length; s2++){ const t = (cur+s2)%L.length; if (L[t]===k){ j = t; break; } } c.recalages.push({date:day, index:j, src:day}); }
+        else ch[day] = d.k; }
+      c.recalages = c.recalages.filter(r=>r.date >= addDays(today(),-60) || r===c.recalages[c.recalages.length-1]); tr.cycle = c;
+    } else { const def = planFor(day); if (!d.k || (def && def.nom && def.nom.toLowerCase()===d.k.toLowerCase())) delete ch[day]; else ch[day] = d.k; }
     Object.keys(ch).forEach(k=>{ if (k < addDays(today(),-30)) delete ch[k]; });
-    tr.changes = ch; S.app.training = {...S.app.training, changes:ch};
+    tr.changes = ch; S.app.training = {...S.app.training, changes:ch, cycle:tr.cycle};
     try { await put("app/training", tr); } catch(e){ return; }
     S.ui.seanceEdit = false; const apres = dayType(day);
     if (avant!==apres && S.journal[day]){ const j = journalOf(day); const touched = (j.repas||[]).some(r=>r.fait||r.mod||r.ajoute);
@@ -2064,7 +2078,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261112092932";
+const APP_VERSION = "20261114124838";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
