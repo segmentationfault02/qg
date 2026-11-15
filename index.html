@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-sr0Z4ycYs+XsOdmyZHOBazZJcerpnSSFeQbhlorZM+s='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-jWl20oo5XsUjLqIg8slNrbbLI8mi82CSK5eoFsy4GiM='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -250,6 +250,13 @@ const S = {
   ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
 try { const v = localStorage.getItem("qg.view"); if (v) S.view = v; } catch(e){}
+try { const q = new URLSearchParams(location.search).get("v"); if (q){ S.view = q; history.replaceState(null, "", location.pathname); } } catch(e){}
+function notifsEffacer(){ try { navigator.serviceWorker.ready.then(r=>r.getNotifications ? r.getNotifications() : []).then(L=>L.forEach(n=>n.close())).catch(()=>{}); } catch(e){} }
+if ("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").then(notifsEffacer).catch(()=>{});
+  navigator.serviceWorker.addEventListener("message", e => { const u = e.data && e.data.qgOuvrir; if (!u) return; try { const v = new URL(u).searchParams.get("v"); if (v && VIEWS[v]) ACT.go({v}); } catch(_){} });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) notifsEffacer(); });
+}
 try { const t = localStorage.getItem("qg.theme"); if (t) document.documentElement.setAttribute("data-theme", t==="laiton" ? "dark" : t==="clair" ? "light" : t==="auto" ? "" : t); if (t==="auto") document.documentElement.removeAttribute("data-theme"); } catch(e){}
 
 const DEF_CATS = ["Fit","Bouffe","Transport","Logement","Abonnements","Santé","Ezekiel","Shopping","Sorties","Divers"];
@@ -965,7 +972,32 @@ function themeApply(t){ const k = THEMES.some(x=>x[0]===t) ? t : "auto", r = doc
 const themeCur = () => { let t = (S.app.config||{}).theme; if (!t) try { t = localStorage.getItem("qg.theme"); } catch(e){} return t || "auto"; };
 SHEETS.reglages = { html(){ const cur = themeCur();
   return '<h2 class="h2">Réglages</h2><span class="eyebrow">Thème</span><div class="theme-grid">'+THEMES.map(([k,n,a,b,c])=>'<button type="button" class="theme-opt'+(k===cur?' on':'')+'" data-act="themeSet" data-k="'+k+'"><span class="theme-sw"><i style="background:'+a+'"></i><i style="background:'+b+'"></i><i style="background:'+c+'"></i></span><span class="small"><b>'+n+'</b></span></button>').join("")+'</div>'+
-    '<div class="hint">Le thème est gardé sur ce téléphone et sur tes autres appareils.</div><div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>'; } };
+    '<div class="hint">Le thème est gardé sur ce téléphone et sur tes autres appareils.</div>'+notifReglages()+'<div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>'; } };
+/* ---------- notifications (Web Push) ---------- */
+const pushOk = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const pushStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone===true;
+const notifCfg = () => (S.app.config||{}).notifs || {};
+async function pushEtat(){ if (S.ui.pushChk) return; S.ui.pushChk = true;
+  try { const r = await Promise.race([navigator.serviceWorker.ready, new Promise((_,k)=>setTimeout(()=>k(new Error("sw")), 5000))]); const sub = await r.pushManager.getSubscription(); S.ui.pushSub = !!sub; }
+  catch(e){ S.ui.pushSub = false; } S.ui.pushChk = false; if (S.sheet && S.sheet.type==="reglages") renderSheet(); }
+function notifReglages(){
+  const n = notifCfg(), t = n.taches||{};
+  let h = '<span class="eyebrow">Notifications</span><section class="card" style="gap:10px;background:var(--surface2)">';
+  if (!pushOk()) h += '<div class="small muted">Ce navigateur ne gère pas les notifications. Sur iPhone : iOS 16.4 ou plus, et l\'app ouverte depuis l\'écran d\'accueil.</div>';
+  else if (!pushStandalone() && /iPhone|iPad/.test(navigator.userAgent)) h += '<div class="small muted">Ouvre le QG depuis son icône sur l\'écran d\'accueil pour activer les notifications.</div>';
+  else if (S.ui.pushSub==null){ pushEtat(); h += '<div class="small muted">Vérification…</div>'; }
+  else if (!S.ui.pushSub) h += '<div class="small muted">'+(Notification.permission==="denied" ? 'Notifications refusées : autorise-les dans Réglages iPhone › Notifications › QG, puis reviens ici.' : 'Pas encore activées sur cet appareil.')+'</div><button type="button" class="btn pri full" data-act="pushOn">Activer les notifications sur cet appareil</button>';
+  else h += '<div class="small"><b>Activées sur cet appareil.</b></div><div class="row"><button type="button" class="btn grow" data-act="pushTest">Envoyer un test</button><button type="button" class="btn ghost" data-act="pushOff">Désactiver</button></div>';
+  h += '<div class="li"><span class="t grow" style="min-width:0">Prochaine tâche du planning<br><span class="small muted">Avec l\'heure de départ et le bus ou le train s\'il y a un trajet.</span></span>'+chk(t.on,"notifSet",'data-k="taches.on"')+'</div>'+
+    (t.on ? '<div class="field"><label for="nf-avant">Prévenir avant le départ</label><select class="inp" id="nf-avant" data-ncfg="taches.avant">'+[5,10,15,20,30,45,60].map(m=>'<option value="'+m+'"'+((+t.avant||15)===m?' selected':'')+'>'+m+' min avant</option>').join("")+'</select></div>' : '');
+  EXT.reglages.forEach(r=>{ try { h += r.html(n); } catch(e){} });
+  return h+'<div class="hint">Une notification reste sur l\'écran verrouillé jusqu\'à ce que tu la touches ou la balaies. La toucher ouvre l\'app au bon endroit, et ouvrir l\'app efface celles déjà affichées.</div></section>';
+}
+async function notifSave(path, v){ const cfg = {...(S.app.config||{})}; delete cfg.id; const n = JSON.parse(JSON.stringify(cfg.notifs||{})); const [a,b] = path.split(".");
+  n[a] = {...(n[a]||{}), [b]:v}; cfg.notifs = n; S.app.config = {...(S.app.config||{}), notifs:n}; if (S.sheet) renderSheet(); try { await put("app/config", cfg); } catch(e){} }
+const b64u = s => { const p = "=".repeat((4 - s.length % 4) % 4), b = atob((s+p).replace(/-/g,"+").replace(/_/g,"/")); return Uint8Array.from(b, c=>c.charCodeAt(0)); };
+async function rappelsApi(body){ const {data, error} = await sb.functions.invoke("rappels", {body}); if (error || !data || data.error) throw new Error((data && data.error) || "serveur"); return data; }
+document.addEventListener("change", e => { const k = e.target && e.target.dataset && e.target.dataset.ncfg; if (k) notifSave(k, e.target.type==="number" ? +e.target.value : e.target.value); });
 SHEETS.phase = SHEET_PHASE;
 function openSheet(type, ds){ S.sheet = {type, ds:ds||{}}; renderSheet(); }
 function closeSheet(){ S.sheet = null; document.getElementById("sheet").innerHTML = ""; if (pending) render(); }
@@ -1334,6 +1366,19 @@ function editDay(i, fn){
 
 /* ================= ACTIONS ================= */
 const ACT = {
+  notifSet(d){ const [a,b] = d.k.split("."); notifSave(d.k, !((notifCfg()[a]||{})[b])); },
+  async pushOn(){ try {
+      const perm = await Notification.requestPermission(); if (perm!=="granted"){ S.ui.pushSub = false; renderSheet(); return toast("Notifications refusées.", true); }
+      const r = await navigator.serviceWorker.ready, {cle} = await rappelsApi({action:"cle"});
+      const sub = await r.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64u(cle)});
+      const j = sub.toJSON(), h = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(j.endpoint)))).slice(0,10).map(x=>x.toString(16).padStart(2,"0")).join("");
+      await put("push/"+h, {sub:j, appareil:/iPhone/.test(navigator.userAgent)?"iPhone":/iPad/.test(navigator.userAgent)?"iPad":"Autre", cree:new Date().toISOString()});
+      S.ui.pushSub = true; renderSheet(); toast("Notifications activées");
+    } catch(e){ toast("Activation impossible : "+(e.message||e), true); } },
+  async pushOff(){ try { const r = await navigator.serviceWorker.ready, sub = await r.pushManager.getSubscription();
+      if (sub){ const h = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sub.endpoint)))).slice(0,10).map(x=>x.toString(16).padStart(2,"0")).join(""); await sub.unsubscribe(); rm("push/"+h).catch(()=>{}); }
+      S.ui.pushSub = false; renderSheet(); toast("Notifications désactivées sur cet appareil"); } catch(e){ toast("Erreur : "+(e.message||e), true); } },
+  async pushTest(){ try { const r = await rappelsApi({action:"test"}); toast(r.ok ? "Test envoyé" : "Aucun appareil n'a reçu le test.", !r.ok); } catch(e){ toast("Le serveur ne répond pas, réessaie.", true); } },
   async themeSet(d){ themeApply(d.k); S.ui.theme = d.k; const cfg = {...(S.app.config||{})}; delete cfg.id; cfg.theme = d.k; S.app.config = {...(S.app.config||{}), theme:d.k}; renderSheet(); try { await put("app/config", cfg); } catch(e){} },
   go(d){ S.view = d.v; try{ localStorage.setItem("qg.view",d.v); }catch(e){} renderKeepScroll=false; window.scrollTo(0,0); render(); },
   corpsTab(d){ S.ui.corpsTab=d.k; render(); },
@@ -1960,7 +2005,7 @@ async function doExport(){
 
 /* ================= MODULES PRIVÉS ================= */
 // Des modules personnels peuvent être stockés dans la base (accès réservé au propriétaire) et chargés après connexion.
-const EXT = {tabs:[], blocs:[], charges:{}};
+const EXT = {tabs:[], blocs:[], reglages:[], charges:{}};
 /* fichiers privés (stockage réservé au propriétaire) */
 async function fichierEnvoyer(path, file){ const {error} = await sb.storage.from("fichiers").upload(path, file, {upsert:true, contentType:file.type||"application/octet-stream"}); if (error) throw error; return path; }
 async function fichierBlob(path){ const {data, error} = await sb.storage.from("fichiers").download(path); if (error) throw error; return data; }
@@ -2107,7 +2152,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261115171632";
+const APP_VERSION = "20261115173051";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
