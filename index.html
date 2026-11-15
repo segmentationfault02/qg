@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-rVyCqk+R69xXdxNo8EJEFbc5GR5xLHVPwr8A3mT9iHc='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-sr0Z4ycYs+XsOdmyZHOBazZJcerpnSSFeQbhlorZM+s='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -31,7 +31,7 @@
   --r:14px; --r-s:9px;
   color-scheme:dark;
 }
-@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+@media (prefers-color-scheme: light){:root:not([data-theme]){
   --bg:#eff1f2; --surface:#ffffff; --surface2:#e7eaec; --line:#d5d9dc; --fg:#15181a; --muted:#5b636a;
   --accent:#a46d14; --accent-soft:rgba(164,109,20,.12); --on-accent:#ffffff;
   --good:#2b8653; --good-soft:rgba(43,134,83,.12); --warn:#bf5718; --warn-soft:rgba(191,87,24,.12); --bad:#c13a3a; --bad-soft:rgba(193,58,58,.12);
@@ -41,6 +41,20 @@
   --accent:#a46d14; --accent-soft:rgba(164,109,20,.12); --on-accent:#ffffff;
   --good:#2b8653; --good-soft:rgba(43,134,83,.12); --warn:#bf5718; --warn-soft:rgba(191,87,24,.12); --bad:#c13a3a; --bad-soft:rgba(193,58,58,.12);
   --scrim:rgba(20,24,28,.4); color-scheme:light}
+
+/* Thèmes au choix (Réglages) : seules les couleurs changent. */
+:root[data-theme="nuit"]{--bg:#000000; --surface:#0d0e10; --surface2:#17191c; --line:#24272b; --fg:#f2f2f2; --muted:#8c9196; --accent:#7aa2ff; --accent-soft:rgba(122,162,255,.15); --on-accent:#05102b; color-scheme:dark}
+:root[data-theme="foret"]{--bg:#0e1411; --surface:#151d18; --surface2:#1d2821; --line:#29362d; --fg:#e8eee9; --muted:#93a198; --accent:#6fcf8f; --accent-soft:rgba(111,207,143,.14); --on-accent:#06170c; color-scheme:dark}
+:root[data-theme="ocean"]{--bg:#0b1219; --surface:#111b25; --surface2:#182532; --line:#223243; --fg:#e6eef5; --muted:#8fa1b3; --accent:#45c4d9; --accent-soft:rgba(69,196,217,.14); --on-accent:#03161a; color-scheme:dark}
+:root[data-theme="bordeaux"]{--bg:#140d0f; --surface:#1d1316; --surface2:#271a1e; --line:#352328; --fg:#f1e8ea; --muted:#a8959a; --accent:#e0687e; --accent-soft:rgba(224,104,126,.15); --on-accent:#20070d; color-scheme:dark}
+:root[data-theme="violet"]{--bg:#110f17; --surface:#18151f; --surface2:#211d2b; --line:#2e2839; --fg:#ece9f3; --muted:#9e97ad; --accent:#b08cff; --accent-soft:rgba(176,140,255,.15); --on-accent:#140a2b; color-scheme:dark}
+:root[data-theme="mono"]{--bg:#0c0c0c; --surface:#151515; --surface2:#1f1f1f; --line:#2c2c2c; --fg:#f0f0f0; --muted:#929292; --accent:#f0f0f0; --accent-soft:rgba(240,240,240,.10); --on-accent:#0c0c0c; color-scheme:dark}
+:root[data-theme="sable"]{--bg:#f4efe6; --surface:#fffaf2; --surface2:#ebe3d6; --line:#dbd1c1; --fg:#231d14; --muted:#6e6456; --accent:#b0582b; --accent-soft:rgba(176,88,43,.12); --on-accent:#ffffff; --good:#2b8653; --good-soft:rgba(43,134,83,.12); --warn:#bf5718; --warn-soft:rgba(191,87,24,.12); --bad:#c13a3a; --bad-soft:rgba(193,58,58,.12); --scrim:rgba(20,24,28,.4); color-scheme:light}
+.top-in .gear{margin-left:auto;align-self:center;width:34px;height:34px;color:var(--muted)}
+.theme-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.theme-opt{appearance:none;border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;text-align:left;background:var(--surface2)}
+.theme-opt.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.theme-sw{display:flex;gap:4px;height:22px}.theme-sw i{flex:1;border-radius:6px;border:1px solid rgba(127,127,127,.25)}
 
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
@@ -191,7 +205,7 @@ body{min-height:100vh;overscroll-behavior-y:none}
 </style>
 </head>
 <body>
-<header class="top"><div class="top-in"><h1 id="ttl">QG</h1><span class="sub" id="sub"></span></div></header>
+<header class="top"><div class="top-in"><h1 id="ttl">QG</h1><span class="sub" id="sub"></span><button class="icon-btn gear" data-act="sheet" data-s="reglages" aria-label="Réglages"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div></header>
 <main><div class="wrap" id="app"><div class="empty">Chargement de tes données…</div></div></main>
 <nav class="tabs" aria-label="Sections"><div class="tabs-in" id="tabs"></div></nav>
 <div id="sheet"></div>
@@ -236,6 +250,7 @@ const S = {
   ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
 try { const v = localStorage.getItem("qg.view"); if (v) S.view = v; } catch(e){}
+try { const t = localStorage.getItem("qg.theme"); if (t) document.documentElement.setAttribute("data-theme", t==="laiton" ? "dark" : t==="clair" ? "light" : t==="auto" ? "" : t); if (t==="auto") document.documentElement.removeAttribute("data-theme"); } catch(e){}
 
 const DEF_CATS = ["Fit","Bouffe","Transport","Logement","Abonnements","Santé","Ezekiel","Shopping","Sorties","Divers"];
 const cats = () => (S.app.config && S.app.config.categories) || DEF_CATS;
@@ -248,8 +263,10 @@ const EZ = {depot:"Dépôt 8h30",recup:"Récup 16h30",rien:"Rien"};
 /* ---------- rendu ---------- */
 const $app = document.getElementById("app");
 let pending = false;
+let themeVu = null;
 function render(){
   if (!started) return;
+  { const t = (S.app.config||{}).theme; if (t && t!==themeVu){ themeVu = t; themeApply(t); } }
   const a = document.activeElement;
   if (a && $app.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { pending = true; return; }
   pending = false;
@@ -938,6 +955,17 @@ VIEWS.ecole = { title:"École 42", body(){
 
 /* ================= SHEETS (formulaires) ================= */
 const SHEETS = {};
+/* ---------- réglages : thème ---------- */
+const THEMES = [["auto","Auto (suit l\'iPhone)","#101214","#eff1f2","#dfa64a"],["laiton","Laiton sombre","#101214","#22262a","#dfa64a"],["clair","Clair","#eff1f2","#ffffff","#a46d14"],["nuit","Nuit","#000000","#17191c","#7aa2ff"],
+  ["foret","Forêt","#0e1411","#1d2821","#6fcf8f"],["ocean","Océan","#0b1219","#182532","#45c4d9"],["bordeaux","Bordeaux","#140d0f","#271a1e","#e0687e"],["violet","Violet","#110f17","#211d2b","#b08cff"],["mono","Noir et blanc","#0c0c0c","#1f1f1f","#f0f0f0"],["sable","Sable","#f4efe6","#ebe3d6","#b0582b"]];
+function themeApply(t){ const k = THEMES.some(x=>x[0]===t) ? t : "auto", r = document.documentElement;
+  if (k==="auto") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", k==="laiton" ? "dark" : k==="clair" ? "light" : k);
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) requestAnimationFrame(()=>m.setAttribute("content", getComputedStyle(document.body).getPropertyValue("--bg").trim() || "#101214"));
+  try { localStorage.setItem("qg.theme", k); } catch(e){} return k; }
+const themeCur = () => { let t = (S.app.config||{}).theme; if (!t) try { t = localStorage.getItem("qg.theme"); } catch(e){} return t || "auto"; };
+SHEETS.reglages = { html(){ const cur = themeCur();
+  return '<h2 class="h2">Réglages</h2><span class="eyebrow">Thème</span><div class="theme-grid">'+THEMES.map(([k,n,a,b,c])=>'<button type="button" class="theme-opt'+(k===cur?' on':'')+'" data-act="themeSet" data-k="'+k+'"><span class="theme-sw"><i style="background:'+a+'"></i><i style="background:'+b+'"></i><i style="background:'+c+'"></i></span><span class="small"><b>'+n+'</b></span></button>').join("")+'</div>'+
+    '<div class="hint">Le thème est gardé sur ce téléphone et sur tes autres appareils.</div><div class="row"><button type="button" class="btn ghost grow" data-act="close">Fermer</button></div>'; } };
 SHEETS.phase = SHEET_PHASE;
 function openSheet(type, ds){ S.sheet = {type, ds:ds||{}}; renderSheet(); }
 function closeSheet(){ S.sheet = null; document.getElementById("sheet").innerHTML = ""; if (pending) render(); }
@@ -1306,6 +1334,7 @@ function editDay(i, fn){
 
 /* ================= ACTIONS ================= */
 const ACT = {
+  async themeSet(d){ themeApply(d.k); S.ui.theme = d.k; const cfg = {...(S.app.config||{})}; delete cfg.id; cfg.theme = d.k; S.app.config = {...(S.app.config||{}), theme:d.k}; renderSheet(); try { await put("app/config", cfg); } catch(e){} },
   go(d){ S.view = d.v; try{ localStorage.setItem("qg.view",d.v); }catch(e){} renderKeepScroll=false; window.scrollTo(0,0); render(); },
   corpsTab(d){ S.ui.corpsTab=d.k; render(); },
   dietTab(d){ S.ui.dietTab=d.k; render(); if (d.k==="riz") rizCalc(); },
@@ -2078,7 +2107,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261114124838";
+const APP_VERSION = "20261115171632";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
