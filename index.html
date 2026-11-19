@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-94bwIVbZLGdpw2VGSr6tkm2BhzCZovtolyTgWsYRl9k='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-TblD1llxcjus7jz/gQJkItKRcB2Zmosl+T6LWSIAvDI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -735,7 +735,8 @@ VIEWS.diet = { title:"Diet", body(){
     const m = dayMacros(day);
     h += '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(D.phase||"Diet")+'</span>'+(D.majLe?'<span class="small muted">màj '+fShort(D.majLe)+'</span>':'')+'</div>'+seg("dietType", ty, DTYPES.map(([k,l])=>[k,l]));
     h += '<div class="spread"><div><div class="big num">'+Math.round(m.kcal)+'</div><div class="small muted">kcal / jour</div></div><div class="grid3" style="flex:1;max-width:240px"><div class="stat"><span class="k">Prot.</span><span class="v num">'+Math.round(m.p)+'g</span></div><div class="stat"><span class="k">Gluc.</span><span class="v num">'+Math.round(m.g)+'g</span></div><div class="stat"><span class="k">Lip.</span><span class="v num">'+Math.round(m.l)+'g</span></div></div></div>';
-    if (D.note) h += '<div class="small muted">'+esc(D.note)+'</div>';
+    if (S.ui.noteEdit) h += '<div class="stack" style="gap:6px"><textarea class="inp" id="d-note" rows="3" placeholder="Commentaire sur ta diet">'+esc(D.note||"")+'</textarea><div class="row"><button class="btn ghost" data-act="noteEdit" data-k="0">Annuler</button><button class="btn pri grow" data-act="noteSave">Enregistrer</button></div></div>';
+    else h += '<div class="small muted tap" data-act="noteEdit" data-k="1" style="cursor:pointer">'+(D.note ? esc(D.note)+' <span style="color:var(--accent)">Modifier</span>' : '<span style="color:var(--accent)">+ Ajouter un commentaire</span>')+'</div>';
     h += '</section>';
     h += '<section class="card">'+((day&&day.repas)||[]).map((r,ri)=>{ const mm = mealMacros(r);
       return '<div class="meal tap" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'" data-i="'+ri+'" style="cursor:pointer"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
@@ -1371,6 +1372,9 @@ function editDay(i, fn){
 
 /* ================= ACTIONS ================= */
 const ACT = {
+  noteEdit(d){ S.ui.noteEdit = d.k==="1"; render(); if (S.ui.noteEdit){ const e = document.getElementById("d-note"); if (e){ e.focus(); e.setSelectionRange(e.value.length, e.value.length); } } },
+  async noteSave(){ const v = val("d-note").trim(), D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; if (v) D.note = v; else delete D.note;
+    S.ui.noteEdit = false; S.app.diet = {...(S.app.diet||{}), note:v||undefined}; render(); try { await put("app/diet", D); toast("Commentaire enregistré"); } catch(e){} },
   notifSet(d){ const [a,b] = d.k.split("."); notifSave(d.k, !((notifCfg()[a]||{})[b])); },
   async pushOn(){ try {
       const perm = await Notification.requestPermission(); if (perm!=="granted"){ S.ui.pushSub = false; renderSheet(); return toast("Notifications refusées.", true); }
@@ -2157,7 +2161,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261119143852";
+const APP_VERSION = "20261119145017";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
