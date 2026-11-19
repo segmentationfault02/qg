@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#101214">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-jWl20oo5XsUjLqIg8slNrbbLI8mi82CSK5eoFsy4GiM='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-94bwIVbZLGdpw2VGSr6tkm2BhzCZovtolyTgWsYRl9k='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -329,9 +329,13 @@ function splitFor(dateS){
   if (ch){ const base = Object.values(t.jours).find(j=>j && j.nom && j.nom.toLowerCase()===ch.toLowerCase()) || {}; return {...base, nom:ch, change:true}; }
   return planFor(dateS);
 }
+// Types de jour diet : clé interne -> nom affiché. Low = repos, Medium = full body / haut, High = jambes.
+const DTYPES = [["off","Low"],["training","Medium"],["high","High"]];
+const dtLab = k => (DTYPES.find(x=>x[0]===k)||[k,k])[1];
 function dayType(dateS){
   const sp = splitFor(dateS);
-  return sp && sp.nom && sp.nom.toLowerCase()!=="repos" ? "training" : "off";
+  if (!sp || !sp.nom || sp.nom.toLowerCase()==="repos") return "off";
+  return estJambes(sp.nom) ? "high" : "training";
 }
 function poidsSorted(){
   return Object.keys(S.poids).sort().map(d=>({d, kg:S.poids[d].kg})).filter(x=>typeof x.kg==="number");
@@ -499,7 +503,7 @@ VIEWS.accueil = { title:"QG", body(){
   if (S.ui.seanceEdit) h += seanceChoix(t);
   if (loading("app")) h += '<div class="muted">…</div>';
   else if (!sp) h += '<div class="empty">Ton split n\'est pas encore renseigné.</div>';
-  else if (dt==="off"){ const nx = prochainExtra(t); h += '<div class="big">Repos</div><div class="muted small">Jour off, diet off.'+(nx?' Prochain : <b>'+(nx.x==="cardio"?"cardio":"abdos")+'</b> ('+(nx.d===addDays(t,1)?"demain":fShort(nx.d))+').':'')+'</div>'+extraDernier(t); }
+  else if (dt==="off"){ const nx = prochainExtra(t); h += '<div class="big">Repos</div><div class="muted small">Jour off, diet low.'+(nx?' Prochain : <b>'+(nx.x==="cardio"?"cardio":"abdos")+'</b> ('+(nx.d===addDays(t,1)?"demain":fShort(nx.d))+').':'')+'</div>'+extraDernier(t); }
   else {
     h += '<div class="spread"><div class="big">'+esc(sp.nom)+'</div><a class="btn pri" href="'+esc(tr.hevyLien||"hevy://")+'" target="_blank" rel="noopener">Ouvrir Hevy</a></div>';
     if (sp.detail) h += '<div class="small muted">'+esc(sp.detail)+'</div>';
@@ -527,7 +531,7 @@ VIEWS.accueil = { title:"QG", body(){
 
   B.agenda = h; h = "";
   // Diet
-  h += '<section class="card tap" data-act="go" data-v="diet" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Diet du jour</span><span class="chip acc">'+(dt==="training"?"Training":"Off")+'</span></div>';
+  h += '<section class="card tap" data-act="go" data-v="diet" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Diet du jour</span><span class="chip acc">'+dtLab(dt)+'</span></div>';
   const jt = S.journal[t]; const js = jt ? journalStats(jt) : null;
   if (js) h += '<div class="spread"><div><span class="mid num">'+Math.round(js.mange.kcal)+'</span><span class="muted"> / '+Math.round(js.tpl.kcal)+' kcal</span>'+ecartTxt(js.ecart.kcal,"kcal")+'</div><span class="small muted">'+js.nbFait+'/'+js.nb+' repas</span></div><div class="bar"><i style="width:'+Math.min(100,js.tpl.kcal?js.mange.kcal/js.tpl.kcal*100:0)+'%"></i></div>';
   else h += S.app.diet ? '<div class="spread"><div class="mid num">'+Math.round(dm.kcal)+' kcal</div><div class="macros"><span><b class="num">'+Math.round(dm.p)+'</b> P</span><span><b class="num">'+Math.round(dm.g)+'</b> G</span><span><b class="num">'+Math.round(dm.l)+'</b> L</span></div></div>' : '<div class="muted">…</div>';
@@ -729,7 +733,7 @@ VIEWS.diet = { title:"Diet", body(){
     const ty = S.ui.dietType || dayType(today());
     const day = D.jours && D.jours[ty];
     const m = dayMacros(day);
-    h += '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(D.phase||"Diet")+'</span>'+(D.majLe?'<span class="small muted">màj '+fShort(D.majLe)+'</span>':'')+'</div>'+seg("dietType", ty, [["training","Jour training"],["off","Jour off"]]);
+    h += '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(D.phase||"Diet")+'</span>'+(D.majLe?'<span class="small muted">màj '+fShort(D.majLe)+'</span>':'')+'</div>'+seg("dietType", ty, DTYPES.map(([k,l])=>[k,l]));
     h += '<div class="spread"><div><div class="big num">'+Math.round(m.kcal)+'</div><div class="small muted">kcal / jour</div></div><div class="grid3" style="flex:1;max-width:240px"><div class="stat"><span class="k">Prot.</span><span class="v num">'+Math.round(m.p)+'g</span></div><div class="stat"><span class="k">Gluc.</span><span class="v num">'+Math.round(m.g)+'g</span></div><div class="stat"><span class="k">Lip.</span><span class="v num">'+Math.round(m.l)+'g</span></div></div></div>';
     if (D.note) h += '<div class="small muted">'+esc(D.note)+'</div>';
     h += '</section>';
@@ -737,7 +741,7 @@ VIEWS.diet = { title:"Diet", body(){
       return '<div class="meal tap" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'" data-i="'+ri+'" style="cursor:pointer"><div class="spread"><div class="row"><b class="num">'+esc(r.heure||"")+'</b><span style="font-weight:600">'+esc(r.nom)+'</span></div><span class="small num">'+Math.round(mm.kcal)+' kcal</span></div>'+
         (r.items||[]).map(it=>{ const a=food(it.a)||{nom:it.a,unite:"g"}; const im=itemMacros(it); return '<div class="food"><span>'+esc(a.nom)+(it.etat?' <span class="muted small">('+esc(it.etat)+')</span>':'')+'</span><span class="g num">'+it.q+uLab(a,it.q)+(it.cru?' <span class="muted small">('+Math.round(it.cru)+' g cru)</span>':'')+'</span><span class="k num small">'+Math.round(im.kcal)+' kcal</span></div>'; }).join("")+
         '<div class="macros"><span>P <b class="num">'+r1(mm.p)+'</b></span><span>G <b class="num">'+r1(mm.g)+'</b></span><span>L <b class="num">'+r1(mm.l)+'</b></span>'+(r.note?'<span>'+esc(r.note)+'</span>':'')+'</div></div>'; }).join("")+'</section>';
-    h += '<button class="btn full" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'">+ Ajouter un repas au jour '+(ty==="training"?"training":"off")+'</button>';
+    h += '<button class="btn full" data-act="sheet" data-s="tplRepas" data-ty="'+ty+'">+ Ajouter un repas au jour '+dtLab(ty).toLowerCase()+'</button>';
     h += '<div class="hint" style="text-align:center">Touche un repas pour le modifier. Chaque changement est noté dans l\'historique (onglet Suivi). Tes journaux déjà commencés ne changent pas.</div>';
     return h;
   }
@@ -747,7 +751,7 @@ VIEWS.diet = { title:"Diet", body(){
     h += '<section class="card"><span class="eyebrow">Fournée · '+K.label.toLowerCase()+'</span><form data-form="riz" class="stack" id="riz-form">'+
       '<div class="grid2"><div class="field"><label for="rz-cru">'+K.crul+' (g)</label><input class="inp num" id="rz-cru" inputmode="decimal" placeholder="'+K.ph[0]+'" value="'+rzv("rz-cru","")+'"></div><div class="field"><label for="rz-cuit">Pesée après cuisson (g)</label><input class="inp num" id="rz-cuit" inputmode="decimal" placeholder="'+K.ph[1]+'" value="'+rzv("rz-cuit","")+'"></div></div>'+
       '<div class="field"><label for="rz-tare">Poids du récipient (g)</label><input class="inp num" id="rz-tare" inputmode="decimal" value="'+rzv("rz-tare",(cfg.tares||{})[kind]!=null?cfg.tares[kind]:(kind==="riz"&&cfg.tareRiz!=null?cfg.tareRiz:0))+'"></div>'+
-      '<div class="grid2"><div class="field"><label for="rz-pt">Portion crue training (g)</label><input class="inp num" id="rz-pt" inputmode="decimal" value="'+rzv("rz-pt",rp.training??"")+'"></div><div class="field"><label for="rz-po">Portion crue off (g)</label><input class="inp num" id="rz-po" inputmode="decimal" value="'+rzv("rz-po",rp.off??"")+'"></div></div>'+
+      '<span class="eyebrow">Portions crues (g)</span><div class="grid3"><div class="field"><label for="rz-po">Low</label><input class="inp num" id="rz-po" inputmode="decimal" value="'+rzv("rz-po",rp.off??"")+'"></div><div class="field"><label for="rz-pt">Medium</label><input class="inp num" id="rz-pt" inputmode="decimal" value="'+rzv("rz-pt",rp.training??"")+'"></div><div class="field"><label for="rz-ph">High</label><input class="inp num" id="rz-ph" inputmode="decimal" value="'+rzv("rz-ph",rp.high??"")+'"></div></div>'+
       '<div id="rz-out"></div><button class="btn pri" type="submit">Enregistrer la fournée</button></form>'+
       '<div class="hint">Ta template utilise le « '+esc(al.nom||K.cuit)+' » : à chaque fournée, ses grammes cuits sont recalculés depuis la portion crue, et ses macros avec le ratio'+(al.ratio?' (actuel ×'+String(al.ratio).replace(".",",")+')':'')+'. Les portions crues modifiées ici sont aussi changées dans la template.</div></section>';
     const L = S.riz.filter(x=>(x.kind||"riz")===kind).sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
@@ -755,7 +759,7 @@ VIEWS.diet = { title:"Diet", body(){
       const avg = sum(L.slice(0,5),x=>x.ratio)/Math.min(5,L.length);
       h += '<section class="card"><div class="card-h"><span class="eyebrow">Tes fournées</span><span class="chip acc">ratio moyen '+avg.toFixed(2)+'</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Cru</th><th>Cuit</th><th>Ratio</th><th>Portion</th></tr></thead><tbody>'+
         L.slice(0,12).map(x=>{ const cell = (pc, cr, lab) => '<b>'+Math.round(pc)+' g</b> cuit'+(lab?' <span class="muted">'+lab+'</span>':'')+'<br><span class="muted">= '+Math.round(cr)+' g cru</span>';
-          const port = x.ptCrue!=null ? cell(x.ptCrue*x.ratio, x.ptCrue, "training")+(x.poCrue!=null?'<br>'+cell(x.poCrue*x.ratio, x.poCrue, "off"):'') : x.portionCuite ? cell(x.portionCuite, x.portionCrue || x.portionCuite/x.ratio, "") : '';
+          const port = x.ptCrue!=null ? cell(x.ptCrue*x.ratio, x.ptCrue, "medium")+(x.poCrue!=null?'<br>'+cell(x.poCrue*x.ratio, x.poCrue, "low"):'')+(x.phCrue!=null?'<br>'+cell(x.phCrue*x.ratio, x.phCrue, "high"):'') : x.portionCuite ? cell(x.portionCuite, x.portionCrue || x.portionCuite/x.ratio, "") : '';
           return '<tr><td>'+fShort(x.date)+'</td><td>'+x.cru+'</td><td>'+Math.round(x.cuit)+'</td><td>'+x.ratio.toFixed(2)+'</td><td style="white-space:nowrap">'+port+'</td></tr>'; }).join("")+'</tbody></table></div></section>';
     }
     return h;
@@ -814,11 +818,11 @@ function santeView(){
 function journalView(){
   const d = S.ui.jourDiet, saved = !!S.journal[d], j = journalOf(d), st = journalStats(j);
   let h = '<div class="spread"><button class="icon-btn" data-act="jDay" data-n="-1" aria-label="Jour précédent">‹</button><h2 class="h2 cap">'+(d===today()?"Aujourd\'hui":fDay(d))+'</h2><button class="icon-btn" data-act="jDay" data-n="1" aria-label="Jour suivant">›</button></div>';
-  h += '<section class="card"><div class="card-h"><span class="eyebrow">'+(saved?"Journal du jour":"Pas encore commencé · basé sur la template")+'</span></div>'+seg("jType", j.type, [["training","Jour training"],["off","Jour off"]]);
+  h += '<section class="card"><div class="card-h"><span class="eyebrow">'+(saved?"Journal du jour":"Pas encore commencé · basé sur la template")+'</span></div>'+seg("jType", j.type, DTYPES.map(([k,l])=>[k,l]));
   const B = st.tpl, E = st.ecart;
   h += '<div class="spread"><div><span class="big num">'+Math.round(st.mange.kcal)+'</span><span class="muted"> / '+Math.round(B.kcal)+' kcal</span>'+ecartTxt(E.kcal,"kcal")+'</div><span class="chip '+(st.nbFait===st.nb&&st.nb?"good":"acc")+'">'+st.nbFait+'/'+st.nb+' repas</span></div>';
   h += macroBar("Protéines", st.mange.p, B.p, "g", E.p)+macroBar("Glucides", st.mange.g, B.g, "g", E.g)+macroBar("Lipides", st.mange.l, B.l, "g", E.l);
-  h += '<div class="hint">Objectif = ta diet de base ('+(j.type==="training"?"training":"off")+'). Entre parenthèses : l\'écart sur les repas cochés (comparés aux mêmes repas de la base) et les repas de la base que tu as supprimés. Les repas pas encore cochés ne comptent pas.</div>';
+  h += '<div class="hint">Objectif = ta diet de base ('+dtLab(j.type).toLowerCase()+'). Entre parenthèses : l\'écart sur les repas cochés (comparés aux mêmes repas de la base) et les repas de la base que tu as supprimés. Les repas pas encore cochés ne comptent pas.</div>';
   h += '</section><section class="card">';
   h += (j.repas||[]).map((r,i)=>{ const mm = mealMacros(r);
     return '<div class="meal'+(r.fait?' done':'')+'"><div class="row" style="align-items:flex-start">'+chk(r.fait,"jFait",'data-i="'+i+'"')+
@@ -843,7 +847,7 @@ function suiviView(){
   svg += '</svg>';
   let h = '<section class="card"><span class="eyebrow">Suivi journalier</span>'+svg+'<div class="row small muted" style="gap:14px"><span><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;vertical-align:middle"></i> mangé</span><span><i style="display:inline-block;width:14px;border-top:2px dashed var(--fg);vertical-align:middle"></i> template</span></div>';
   h += '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jour</th><th>Kcal</th><th>P</th><th>G</th><th>L</th><th>Respect</th></tr></thead><tbody>'+rows.map(r=>{ const pct = r.st.tpl.kcal ? r.st.mange.kcal/r.st.tpl.kcal*100 : 0; const cls = pct>=95&&pct<=105?"down":"up";
-    return '<tr class="tap" data-act="jOpen" data-d="'+r.d+'" style="cursor:pointer"><td>'+DOWS[dow(r.d)]+' '+fShort(r.d)+' <span class="muted">'+(r.type==="training"?"T":"O")+'</span></td><td>'+Math.round(r.st.mange.kcal)+'</td><td>'+Math.round(r.st.mange.p)+'</td><td>'+Math.round(r.st.mange.g)+'</td><td>'+Math.round(r.st.mange.l)+'</td><td class="'+cls+'">'+Math.round(pct)+'%</td></tr>'; }).join("")+'</tbody></table></div>';
+    return '<tr class="tap" data-act="jOpen" data-d="'+r.d+'" style="cursor:pointer"><td>'+DOWS[dow(r.d)]+' '+fShort(r.d)+' <span class="muted">'+dtLab(r.type).charAt(0)+'</span></td><td>'+Math.round(r.st.mange.kcal)+'</td><td>'+Math.round(r.st.mange.p)+'</td><td>'+Math.round(r.st.mange.g)+'</td><td>'+Math.round(r.st.mange.l)+'</td><td class="'+cls+'">'+Math.round(pct)+'%</td></tr>'; }).join("")+'</tbody></table></div>';
   const n = rows.length, avg = k => sum(rows,r=>r.st.mange[k])/n;
   h += '<div class="grid4"><div class="stat"><span class="k">Moy. kcal</span><span class="v num">'+Math.round(avg("kcal"))+'</span></div><div class="stat"><span class="k">Moy. P</span><span class="v num">'+Math.round(avg("p"))+'g</span></div><div class="stat"><span class="k">Moy. G</span><span class="v num">'+Math.round(avg("g"))+'g</span></div><div class="stat"><span class="k">Moy. L</span><span class="v num">'+Math.round(avg("l"))+'g</span></div></div>';
   h += '<div class="hint">Respect = calories mangées par rapport à la template du jour. Vert entre 95 et 105 %.</div></section>';
@@ -852,16 +856,17 @@ function suiviView(){
 // Aliments cuisinés à l'avance : la template garde la portion crue (it.cru) et le poids cuit suit la dernière fournée.
 const CUISSONS = { riz:{label:"Riz", cru:"rizjasmin", cuit:"rizjasmincuit", crul:"Riz cru", ph:["500","1300"]}, patate:{label:"Patates air fryer", cru:"patate", cuit:"patateairfryer", crul:"Patates crues", ph:["1000","800"]} };
 function cuissonPortions(kind){ const D = S.app.diet||{}, id = CUISSONS[kind].cuit, out = {};
-  ["training","off"].forEach(ty=>{ (((D.jours||{})[ty]||{}).repas||[]).forEach(r=>(r.items||[]).forEach(i=>{ if (i.a===id && out[ty]==null) out[ty] = i.cru ?? null; })); });
+  DTYPES.forEach(([ty])=>{ (((D.jours||{})[ty]||{}).repas||[]).forEach(r=>(r.items||[]).forEach(i=>{ if (i.a===id && out[ty]==null) out[ty] = i.cru ?? null; })); });
   return out; }
 function rizCalc(){
   const out = document.getElementById("rz-out"); if (!out) return null;
-  const cru = num(val("rz-cru")), brut = num(val("rz-cuit")), tare = num(val("rz-tare"))||0, pt = num(val("rz-pt")), po = num(val("rz-po"));
+  const cru = num(val("rz-cru")), brut = num(val("rz-cuit")), tare = num(val("rz-tare"))||0, pt = num(val("rz-pt")), po = num(val("rz-po")), ph = num(val("rz-ph"));
   if (!cru || !brut || brut-tare<=0){ out.innerHTML = '<div class="empty">Entre le poids cru et la pesée après cuisson.</div>'; return null; }
   const cuit = brut-tare, ratio = cuit/cru, ct = pt ? pt*ratio : null, co = po ? po*ratio : null, kind = S.ui.cuisson||"riz";
-  out.innerHTML = '<div class="grid2"><div class="stat" style="align-items:center;padding:14px"><span class="k">Portion training</span><span class="big num" style="font-size:44px">'+(ct?Math.round(ct):"–")+' g</span><span class="small muted">cuit, pour '+(pt||"–")+' g cru</span></div><div class="stat" style="align-items:center;padding:14px"><span class="k">Portion off</span><span class="big num" style="font-size:44px">'+(co?Math.round(co):"–")+' g</span><span class="small muted">cuit, pour '+(po||"–")+' g cru</span></div></div>'+
+  const box = (lab, c, p) => '<div class="stat" style="align-items:center;padding:12px 6px"><span class="k">'+lab+'</span><span class="big num" style="font-size:32px">'+(c?Math.round(c):"–")+' g</span><span class="small muted">cuit, '+(p||"–")+' g cru</span></div>';
+  out.innerHTML = '<div class="grid3">'+box("Low", co, po)+box("Medium", ct, pt)+box("High", ph ? ph*ratio : null, ph)+'</div>'+
     '<div class="grid2"><div class="stat"><span class="k">Riz cuit net</span><span class="v num">'+Math.round(cuit)+' g</span></div><div class="stat"><span class="k">Ratio</span><span class="v num">×'+ratio.toFixed(2)+'</span></div></div>';
-  return {kind, cru, brut, tare, cuit, ratio, ptCrue:pt, poCrue:po, portionCrue:pt, portionCuite:ct};
+  return {kind, cru, brut, tare, cuit, ratio, ptCrue:pt, poCrue:po, phCrue:ph, portionCrue:pt, portionCuite:ct};
 }
 const val = id => { const e = document.getElementById(id); return e ? e.value : ""; };
 document.addEventListener("input", e => { if (e.target.id && e.target.id.startsWith("rz-")) { S.ui.riz[e.target.id] = e.target.value; rizCalc(); } });
@@ -1247,25 +1252,25 @@ function mealDraftTotal(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
 SHEETS.tplRepas = { html(ds){
   const D = S.app.diet || {}, ty = ds.ty || "training", L = ((D.jours||{})[ty]||{}).repas || [], isNew = !(ds.i!=null && ds.i!=="");
   if (!S.sheet.draft) S.sheet.draft = isNew ? {heure:"", nom:"", items:[]} : JSON.parse(JSON.stringify(L[+ds.i]||{}));
-  const dr = S.sheet.draft, autre = ty==="training" ? "off" : "training", other = (((D.jours||{})[autre]||{}).repas||[]).some(r=>r.nom===dr.nom);
-  return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · template '+(ty==="training"?"training":"off")+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
+  const dr = S.sheet.draft, autres = DTYPES.map(x=>x[0]).filter(k=>k!==ty), also = S.sheet.also || {};
+  return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · template '+dtLab(ty).toLowerCase()+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
     mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+
-    (!S.sheet.fp && !S.sheet.nf ? fld("s-rnote","Note (facultatif)",dr.note||"",'placeholder="sans banane"')+'<label class="row small" style="gap:8px"><input type="checkbox" id="s-both" style="width:20px;height:20px"'+(S.sheet.both?" checked":"")+'> Appliquer aussi au jour '+(autre==="training"?"training":"off")+(other?' (remplace « '+esc(dr.nom)+' »)':' (ajouté)')+'</label>' : '')+sheetBtns(!isNew); },
+    (!S.sheet.fp && !S.sheet.nf ? fld("s-rnote","Note (facultatif)",dr.note||"",'placeholder="sans banane"')+autres.map(a=>{ const other = (((D.jours||{})[a]||{}).repas||[]).some(r=>r.nom===dr.nom); return '<label class="row small" style="gap:8px"><input type="checkbox" id="s-also-'+a+'" style="width:20px;height:20px"'+(also[a]?" checked":"")+'> Appliquer aussi au jour '+dtLab(a).toLowerCase()+(other?' (remplace « '+esc(dr.nom)+' »)':' (ajouté)')+'</label>'; }).join("") : '')+sheetBtns(!isNew); },
   async save(ds){ const dr = S.sheet.draft; syncDraft(); const n = document.getElementById("s-rnote"); if (n) dr.note = n.value.trim(); if (!dr.note) delete dr.note;
     dr.nom = (dr.nom||"").trim() || "Repas"; dr.items = dr.items.filter(x=>x.q>0); if (!dr.items.length) return toast("Ajoute au moins un aliment.", true);
-    const both = !!(document.getElementById("s-both")||{}).checked, ty = ds.ty || "training", D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; D.jours = D.jours || {};
+    const ty = ds.ty || "training", aussi = DTYPES.map(x=>x[0]).filter(k=>k!==ty && (document.getElementById("s-also-"+k)||{}).checked), both = aussi.length>0, D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; D.jours = D.jours || {};
     const crud = x => { const al = food(x.a); return Object.values(CUISSONS).some(c=>c.cuit===x.a) && al && al.ratio ? {cru:Math.round(x.q/al.ratio)} : {}; };
     const clean = {heure:dr.heure||"", nom:dr.nom, items:dr.items.map(x=>({a:x.a, q:x.q, ...(x.etat?{etat:x.etat}:{}), ...crud(x)})), ...(dr.note?{note:dr.note}:{})};
     const appliquer = (t, i) => { const R = ((D.jours[t] = D.jours[t] || {repas:[]}).repas = D.jours[t].repas || []); if (i!=null && i>=0) R[i] = clean; else R.push(clean); sortRepas(R); };
     const ancien = ds.i!=null && ds.i!=="" ? ((D.jours[ty]||{}).repas||[])[+ds.i] : null;
     appliquer(ty, ancien ? +ds.i : null);
-    if (both){ const autre = ty==="training" ? "off" : "training"; const R2 = (D.jours[autre]||{}).repas||[]; appliquer(autre, R2.findIndex(r=>r.nom===(ancien?ancien.nom:clean.nom))); }
+    aussi.forEach(autre=>{ const R2 = (D.jours[autre]||{}).repas||[]; appliquer(autre, R2.findIndex(r=>r.nom===(ancien?ancien.nom:clean.nom))); });
     D.majLe = today(); await put("app/diet", D);
     const desc = clean.items.map(x=>{ const a = food(x.a)||{nom:x.a}; return a.nom+" "+x.q+uLab(a,x.q).trim(); }).join(", ");
-    put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+(both?"training et off":ty)+" : "+(ancien?"« "+clean.nom+" » modifié":"repas « "+clean.nom+" » ajouté")+" ("+(clean.heure?clean.heure+", ":"")+desc+")."}).catch(()=>{});
+    put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+[ty].concat(aussi).map(k=>dtLab(k).toLowerCase()).join(" et ")+" : "+(ancien?"« "+clean.nom+" » modifié":"repas « "+clean.nom+" » ajouté")+" ("+(clean.heure?clean.heure+", ":"")+desc+")."}).catch(()=>{});
     toast("Template mise à jour"); },
   async del(ds){ const ty = ds.ty || "training", D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; const R = (D.jours[ty]||{}).repas||[]; const r = R.splice(+ds.i,1)[0];
-    D.majLe = today(); await put("app/diet", D); put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+ty+" : repas « "+(r&&r.nom)+" » retiré."}).catch(()=>{}); toast("Repas retiré de la template"); } };
+    D.majLe = today(); await put("app/diet", D); put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+dtLab(ty).toLowerCase()+" : repas « "+(r&&r.nom)+" » retiré."}).catch(()=>{}); toast("Repas retiré de la template"); } };
 SHEETS.repas = { html(ds){
   if (!S.sheet.draft){ const j = journalOf(S.ui.jourDiet); const r = ds.i!=null && ds.i!=="" ? j.repas[+ds.i] : null;
     S.sheet.draft = r ? JSON.parse(JSON.stringify(r)) : {heure:"", nom:"", items:[], fait:true}; }
@@ -1293,7 +1298,7 @@ document.addEventListener("input", e => { const t = e.target; if (!S.sheet || S.
     try { const r = await api({action:"arrets", q}); (S.sheet.tr.sug = S.sheet.tr.sug||{})[f] = r.arrets||[];
       box.innerHTML = (r.arrets||[]).slice(0,6).map((a,i)=>'<button type="button" class="btn sm ghost" style="justify-content:flex-start" data-act="trPick" data-f="'+f+'" data-i="'+i+'">'+esc(a.nom)+'</button>').join("") || '<span class="small muted">Aucun arrêt trouvé.</span>';
     } catch(err){ box.innerHTML = '<span class="small up">'+esc(errMsg(err))+'</span>'; } }, 350); });
-function keepRepas(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"), no = document.getElementById("s-rnote"), b = document.getElementById("s-both"); if (h) dr.heure = h.value; if (n) dr.nom = n.value; if (no) dr.note = no.value; if (b) S.sheet.both = b.checked; }
+function keepRepas(){ const dr = S.sheet && S.sheet.draft; if (!dr) return; const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"), no = document.getElementById("s-rnote"), b = document.getElementById("s-also-off"); if (h) dr.heure = h.value; if (n) dr.nom = n.value; if (no) dr.note = no.value; if (b || document.querySelector('[id^="s-also-"]')){ S.sheet.also = {}; DTYPES.forEach(([k])=>{ const e = document.getElementById("s-also-"+k); if (e) S.sheet.also[k] = e.checked; }); } }
 function syncDraft(){ const dr = S.sheet && S.sheet.draft; if (!dr) return;
   const h = document.getElementById("s-rh"), n = document.getElementById("s-rn"); if (h) dr.heure = h.value; if (n) dr.nom = n.value;
   dr.items.forEach((it,k)=>{ const e = document.getElementById("ri-q-"+k); if (e){ const v = num(e.value); it.q = v==null?0:v; } }); }
@@ -1410,7 +1415,7 @@ const ACT = {
     S.ui.seanceEdit = false; const apres = dayType(day);
     if (avant!==apres && S.journal[day]){ const j = journalOf(day); const touched = (j.repas||[]).some(r=>r.fait||r.mod||r.ajoute);
       if (!touched){ try { await saveJournal(day, journalDraft(day, apres)); } catch(e){} }
-      else toast("Séance changée. Ton journal diet a déjà des repas cochés : passe-le en jour "+(apres==="training"?"training":"off")+" dans Diet si besoin.");
+      else toast("Séance changée. Ton journal diet a déjà des repas cochés : passe-le en jour "+dtLab(apres).toLowerCase()+" dans Diet si besoin.");
     }
     if (!(avant!==apres && S.journal[day])) toast("Séance : "+(splitFor(day)||{nom:"?"}).nom);
     render(); },
@@ -1479,7 +1484,7 @@ const ACT = {
   jOpen(d){ S.ui.jourDiet = d.d; S.ui.dietTab = "jour"; renderKeepScroll=false; window.scrollTo(0,0); render(); },
   async jType(d){ const day = S.ui.jourDiet, j = journalOf(day); if (j.type===d.k) return;
     const touched = S.journal[day] && (j.repas||[]).some(r=>r.fait||r.mod||r.ajoute);
-    if (touched && S.ui.typeArm!==d.k){ S.ui.typeArm = d.k; return toast("Touche encore pour remplacer les repas du jour par la template "+(d.k==="training"?"training":"off")+"."); }
+    if (touched && S.ui.typeArm!==d.k){ S.ui.typeArm = d.k; return toast("Touche encore pour remplacer les repas du jour par la template "+dtLab(d.k).toLowerCase()+"."); }
     S.ui.typeArm = null; try{ await saveJournal(day, journalDraft(day, d.k)); }catch(e){} },
   async jFait(d){ const day = S.ui.jourDiet, j = journalOf(day); j.repas[+d.i].fait = !j.repas[+d.i].fait; try{ await saveJournal(day, j); }catch(e){} },
   async jAll(){ const day = S.ui.jourDiet, j = journalOf(day); const all = j.repas.every(r=>r.fait); j.repas.forEach(r=>{ r.fait = !all; }); try{ await saveJournal(day, j); toast(all?"Repas décochés":"Journée validée"); }catch(e){} },
@@ -1540,10 +1545,10 @@ document.addEventListener("submit", async e => {
       if (cru && r.ratio>0){ const R = x => Math.round(x/r.ratio*10)/10; const o = {...(cuitA||{nom:K.label+" cuit", unite:"g"}), kcal:Math.round(cru.kcal/r.ratio*10)/10, p:R(cru.p), g:R(cru.g), l:R(cru.l), ratio:Math.round(r.ratio*1000)/1000, majLe:today()}; delete o.id; await put("aliments/"+K.cuit, o); S.aliments = {...S.aliments, [K.cuit]:o}; }
       // 2) grammes cuits de la template = portion crue x ratio
       const D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; let n = 0;
-      ["training","off"].forEach(ty=>{ const pc = ty==="training" ? r.ptCrue : r.poCrue; let first = true;
+      DTYPES.forEach(([ty])=>{ const pc = ty==="training" ? r.ptCrue : ty==="off" ? r.poCrue : r.phCrue; let first = true;
         (((D.jours||{})[ty]||{}).repas||[]).forEach(m=>(m.items||[]).forEach(i=>{ if (i.a!==K.cuit) return; if (first && pc){ i.cru = pc; } first = false; if (i.cru){ i.q = Math.round(i.cru*r.ratio); n++; } })); });
       if (n){ D.majLe = today(); await put("app/diet", D); }
-      S.ui.riz = {}; toast("Fournée enregistrée · template mise à jour : "+(r.ptCrue?Math.round(r.ptCrue*r.ratio)+" g training":"")+(r.poCrue?" · "+Math.round(r.poCrue*r.ratio)+" g off":"")); return; }
+      S.ui.riz = {}; toast("Fournée enregistrée · template mise à jour : "+(r.ptCrue?Math.round(r.ptCrue*r.ratio)+" g medium":"")+(r.poCrue?" · "+Math.round(r.poCrue*r.ratio)+" g low":"")+(r.phCrue?" · "+Math.round(r.phCrue*r.ratio)+" g high":"")); return; }
   } catch(err){}
 });
 document.addEventListener("keydown", e => { if (e.key==="Escape" && S.sheet) closeSheet(); });
@@ -1560,7 +1565,7 @@ const AR = {
   avanchets:{ref:"ch:1:sloid:93139",nom:"Vernier, Avanchets-Etang"}, blandonnet:{ref:"ch:1:sloid:87924",nom:"Vernier, Blandonnet"},
   aeroport:{ref:"8501026",nom:"Genève-Aéroport"}
 };
-const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, chien:30, trottServetteBouchet:5, trottSalleMere:20, trottMereAeroport:8, trottMereServette:15, trottServetteTrembley:4, piedServetteTrembley:8, durees:{pull:83, legs:82, push:96, lower:71, upper:101, "upper volume":101, "lower volume":71} };
+const AGD = { reveil:"07:00", prepSalle:60, sortie:12, repas:60, chien:30, trottServetteBouchet:5, trottSalleMere:20, trottMereAeroport:8, trottMereServette:15, trottServetteTrembley:4, piedServetteTrembley:8, durees:{pull:83, legs:82, push:96, lower:71, upper:101, "upper volume":101, "lower volume":71, "full body a":85, "full body b":85, "full body c":85} };
 const agCfg = () => Object.assign({}, AGD, (S.app.agenda||{}), {durees:Object.assign({}, AGD.durees, (S.app.agenda||{}).durees||{})});
 const toMin = h => { const m = /^(\d{1,2}):(\d{2})/.exec(h||""); return m ? +m[1]*60 + +m[2] : null; };
 const fromMin = m => { m = Math.max(0, Math.min(24*60-1, Math.round(m))); return pad(Math.floor(m/60))+":"+pad(m%60); };
@@ -2152,7 +2157,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261115173051";
+const APP_VERSION = "20261119143852";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
