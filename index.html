@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#09090b">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-CLlZ2vKoRoAZ3EEgeO2ZdvMvAOXSQwNgSDGb9p8GoPA='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-gk+LQBCic9/Z/uV5OyVKQghSwyWtdLqx024PQCN3qZI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -1283,7 +1283,7 @@ SHEETS.tplRepas = { html(ds){
   const dr = S.sheet.draft, autres = DTYPES.map(x=>x[0]).filter(k=>k!==ty), also = S.sheet.also || {};
   return '<h2 class="h2">'+(isNew?"Nouveau repas":esc(dr.nom))+' · template '+dtLab(ty).toLowerCase()+'</h2><div class="grid2" style="grid-template-columns:110px 1fr">'+fld("s-rh","Heure",dr.heure,'type="time"')+fld("s-rn","Repas",dr.nom,'placeholder="Collation"')+'</div>'+
     mealDraftItemsHtml(dr)+'<div class="small" id="ri-tot"></div>'+
-    (!S.sheet.fp && !S.sheet.nf ? fld("s-rnote","Note (facultatif)",dr.note||"",'placeholder="sans banane"')+autres.map(a=>{ const other = (((D.jours||{})[a]||{}).repas||[]).some(r=>r.nom===dr.nom); return '<label class="row small" style="gap:8px"><input type="checkbox" id="s-also-'+a+'" style="width:20px;height:20px"'+(also[a]?" checked":"")+'> Appliquer aussi au jour '+dtLab(a).toLowerCase()+(other?' (remplace « '+esc(dr.nom)+' »)':' (ajouté)')+'</label>'; }).join("") : '')+sheetBtns(!isNew); },
+    (!isNew && !S.sheet.fp && !S.sheet.nf && L.length>1 ? '<div class="stack" style="gap:6px"><span class="small muted">Échanger le contenu avec</span><div class="row wrap-r" style="gap:6px">'+L.map((r,j)=>j===+ds.i ? '' : '<button type="button" class="btn sm" data-act="tplSwap" data-ty="'+ty+'" data-i="'+ds.i+'" data-j="'+j+'">'+esc((r.heure?r.heure+" · ":"")+r.nom)+'</button>').join("")+'</div><div class="hint">Les aliments et la note passent d\'un repas à l\'autre ; chaque repas garde son nom et son heure.</div></div>' : '')+(!S.sheet.fp && !S.sheet.nf ? fld("s-rnote","Note (facultatif)",dr.note||"",'placeholder="sans banane"')+autres.map(a=>{ const other = (((D.jours||{})[a]||{}).repas||[]).some(r=>r.nom===dr.nom); return '<label class="row small" style="gap:8px"><input type="checkbox" id="s-also-'+a+'" style="width:20px;height:20px"'+(also[a]?" checked":"")+'> Appliquer aussi au jour '+dtLab(a).toLowerCase()+(other?' (remplace « '+esc(dr.nom)+' »)':' (ajouté)')+'</label>'; }).join("") : '')+sheetBtns(!isNew); },
   async save(ds){ const dr = S.sheet.draft; syncDraft(); const n = document.getElementById("s-rnote"); if (n) dr.note = n.value.trim(); if (!dr.note) delete dr.note;
     dr.nom = (dr.nom||"").trim() || "Repas"; dr.items = dr.items.filter(x=>x.q>0); if (!dr.items.length) return toast("Ajoute au moins un aliment.", true);
     const ty = ds.ty || "training", aussi = DTYPES.map(x=>x[0]).filter(k=>k!==ty && (document.getElementById("s-also-"+k)||{}).checked), both = aussi.length>0, D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; D.jours = D.jours || {};
@@ -1401,6 +1401,11 @@ function editDay(i, fn){
 
 /* ================= ACTIONS ================= */
 const ACT = {
+  async tplSwap(d){ const ty = d.ty, i = +d.i, j = +d.j, D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; const R = ((D.jours||{})[ty]||{}).repas||[]; if (!R[i] || !R[j]) return;
+    const a = R[i], b = R[j], ia = a.items, na = a.note; a.items = b.items; b.items = ia; if (b.note) a.note = b.note; else delete a.note; if (na) b.note = na; else delete b.note;
+    D.majLe = today(); closeSheet(); try { await put("app/diet", D); } catch(e){ return; }
+    put("diet_historique/"+today()+"-"+uid().slice(-4), {date:today(), texte:"Template "+dtLab(ty).toLowerCase()+" : contenu de « "+a.nom+" » et « "+b.nom+" » échangé."}).catch(()=>{});
+    toast("« "+a.nom+" » et « "+b.nom+" » échangés"); },
   noteEdit(d){ S.ui.noteEdit = d.k==="1"; render(); if (S.ui.noteEdit){ const e = document.getElementById("d-note"); if (e){ e.focus(); e.setSelectionRange(e.value.length, e.value.length); } } },
   async noteSave(){ const v = val("d-note").trim(), D = JSON.parse(JSON.stringify(S.app.diet||{})); delete D.id; if (v) D.note = v; else delete D.note;
     S.ui.noteEdit = false; S.app.diet = {...(S.app.diet||{}), note:v||undefined}; render(); try { await put("app/diet", D); toast("Commentaire enregistré"); } catch(e){} },
@@ -2189,7 +2194,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261124000538";
+const APP_VERSION = "20261124001919";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
