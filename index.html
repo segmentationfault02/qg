@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#09090b">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-gk+LQBCic9/Z/uV5OyVKQghSwyWtdLqx024PQCN3qZI='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-jTx921a0CItvo6spcVv1qPSwJRR+8WbCMdwBHZPeDAo='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -445,6 +445,31 @@ function ezChips(dateS){
   return '<div class="seg">'+Object.keys(EZ).map(k=>'<button data-act="ez" data-d="'+dateS+'" data-k="'+k+'" aria-pressed="'+(cur===k)+'">'+EZ[k]+'</button>').join("")+'</div>';
 }
 
+/* ---------- historique des pesées (suppression une par une, par glissement ou en sélection) ---------- */
+function pesHistorique(list){
+  const sel = S.ui.pSel, tout = S.ui.pTout, L = (tout ? list : list.slice(-14)).slice().reverse(), n = sel ? Object.keys(sel).length : 0;
+  let h = '<section class="card"><div class="card-h"><span class="eyebrow">Historique des pesées</span>'+(sel ? '<button class="btn sm ghost" data-act="pSel" data-k="0">Annuler</button>' : '<button class="btn sm ghost" data-act="pSel" data-k="1">Sélectionner</button>')+'</div>';
+  h += '<div class="list">'+L.map(x=>{ const on = sel && sel[x.d];
+    return '<div class="li pes-row" data-d="'+x.d+'">'+(sel ? chk(on, "pTog", 'data-d="'+x.d+'"') : '')+'<span class="t grow num">'+fShort(x.d)+' '+x.d.slice(0,4)+'</span><span class="amt num">'+kg(x.kg)+' kg</span><span class="small muted num" style="min-width:58px;text-align:right">moy. '+kg(avg7(list,x.d))+'</span>'+
+      (sel ? '' : '<button class="icon-btn" style="width:34px;height:34px" data-act="pDel" data-d="'+x.d+'" aria-label="Supprimer la pesée du '+fShort(x.d)+'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>')+'</div>'; }).join("")+'</div>';
+  if (!tout && list.length>14) h += '<button class="btn sm ghost full" data-act="pTout">Afficher les '+list.length+' pesées</button>';
+  if (sel) h += '<button class="btn danger full" data-act="pDelSel"'+(n?'':' disabled')+'>Supprimer '+(n ? n+' pesée'+(n>1?'s':'') : 'la sélection')+'</button>';
+  else h += '<div class="hint">Glisse une ligne vers la gauche ou touche la corbeille pour supprimer une pesée.</div>';
+  return h+'</section>';
+}
+// Glisser vers la gauche sur une pesée : demande la suppression.
+(() => { let x0 = null, y0 = 0, row = null;
+  document.addEventListener("touchstart", e => { const r = e.target.closest && e.target.closest(".pes-row"); if (!r || S.ui.pSel) { row = null; return; } row = r; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
+  document.addEventListener("touchmove", e => { if (!row) return; const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0; if (Math.abs(dy) > Math.abs(dx)) return; row.style.transform = "translateX("+Math.min(0, Math.max(-90, dx))+"px)"; row.style.transition = "none"; }, {passive:true});
+  document.addEventListener("touchend", e => { if (!row) return; const dx = (e.changedTouches[0]||{}).clientX - x0, r = row; row = null; r.style.transition = "transform .2s ease"; r.style.transform = "";
+    if (dx < -70) openSheet("pesDel", {d:[r.dataset.d]}); });
+})();
+const SHEET_PESDEL = { html(ds){ const L = ds.d.slice().sort();
+  const txt = L.length===1 ? 'Supprimer la pesée du '+fShort(L[0])+' '+L[0].slice(0,4)+' : '+kg((S.poids[L[0]]||{}).kg)+' kg ?' : 'Supprimer ces '+L.length+' pesées ?';
+  return '<h2 class="h2">'+txt+'</h2>'+(L.length>1 ? '<div class="small muted">'+L.map(d=>fShort(d)+' : '+kg((S.poids[d]||{}).kg)+' kg').join(' · ')+'</div>' : '')+
+    '<div class="hint">La suppression est définitive. Le graphique, la moyenne sur 7 jours et les bilans de phase sont recalculés tout de suite.</div><div class="row"><button type="button" class="btn ghost" data-act="close">Annuler</button><button type="submit" class="btn danger grow">Supprimer</button></div>'; },
+  async save(ds){ let ok = 0; for (const d of ds.d){ try { await rm("poids/"+d); ok++; } catch(e){ break; } }
+    if (ok){ S.ui.pSel = null; toast(ok===1 ? "Pesée supprimée" : ok+" pesées supprimées"); } } };
 /* ---------- graphique poids ---------- */
 function weightChart(list, days){
   if (list.length<2) return '<div class="empty">Le graphique apparaît dès la deuxième pesée.</div>';
@@ -718,8 +743,7 @@ VIEWS.corps = { title:"Corps", body(){
     h += '<section class="card"><div class="grid3"><div class="stat"><span class="k">Moyenne 7 j</span><span class="v num">'+kg(P.avg)+'</span></div><div class="stat"><span class="k">Vs sem. passée</span><span class="v num '+(P.delta>0?"up":"down")+'">'+(P.delta==null?"–":(P.delta>0?"+":"")+kg(P.delta))+'</span></div><div class="stat"><span class="k">En %</span><span class="v num">'+(P.pct==null?"–":(P.pct>0?"+":"")+P.pct.toFixed(2)+'%')+'</span></div></div>';
     h += seg("poidsRange", String(S.ui.poidsRange), [["30","30 j"],["60","60 j"],["120","120 j"],["0","Tout"]]);
     h += weightChart(P.list, S.ui.poidsRange)+'<div class="row small muted" style="gap:14px"><span><i style="display:inline-block;width:14px;height:3px;background:var(--accent);vertical-align:middle;border-radius:2px"></i> moyenne 7 j</span><span><i style="display:inline-block;width:6px;height:6px;background:var(--muted);border-radius:50%;vertical-align:middle"></i> pesée</span></div></section>';
-    const last = P.list.slice(-14).reverse();
-    h += '<section class="card"><span class="eyebrow">Dernières pesées</span><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Poids</th><th>Moy. 7 j</th></tr></thead><tbody>'+last.map(x=>'<tr><td>'+fShort(x.d)+'</td><td>'+kg(x.kg)+'</td><td>'+kg(avg7(P.list,x.d))+'</td></tr>').join("")+'</tbody></table></div></section>';
+    h += pesHistorique(P.list);
     return h;
   }
   if (S.ui.corpsTab==="mesures"){
@@ -994,6 +1018,7 @@ VIEWS.ecole = { title:"École 42", body(){
 
 /* ================= SHEETS (formulaires) ================= */
 const SHEETS = {};
+SHEETS.pesDel = SHEET_PESDEL;
 /* ---------- réglages : thème ---------- */
 const THEMES = [["auto","Auto (suit l\'iPhone)","#09090b","#f2f1ee","#ff7a2f"],["braise","Braise","#09090b","#1c1c20","#ff7a2f"],["laiton","Laiton","#09090b","#1c1c20","#e2aa4e"],["clair","Clair","#f2f1ee","#ffffff","#f0601a"],["nuit","Nuit","#000000","#141418","#7aa2ff"],
   ["foret","Forêt","#080c0a","#18201b","#5fd38d"],["ocean","Océan","#070b10","#16202a","#3cc8e0"],["bordeaux","Bordeaux","#0c0708","#21161a","#ff6b86"],["violet","Violet","#09080d","#1c1825","#b291ff"],["mono","Noir et blanc","#070707","#1a1a1a","#f2f2f2"],["sable","Sable","#f3ede3","#fffaf2","#c0582a"]];
@@ -1459,6 +1484,11 @@ const ACT = {
     render(); },
   argentTab(d){ S.ui.argentTab=d.k; render(); },
   poidsRange(d){ S.ui.poidsRange=+d.k; render(); },
+  pSel(d){ S.ui.pSel = d.k==="1" ? {} : null; render(); },
+  pTog(d){ const s2 = {...(S.ui.pSel||{})}; if (s2[d.d]) delete s2[d.d]; else s2[d.d] = 1; S.ui.pSel = s2; render(); },
+  pTout(){ S.ui.pTout = true; render(); },
+  pDel(d){ openSheet("pesDel", {d:[d.d]}); },
+  pDelSel(){ const L = Object.keys(S.ui.pSel||{}); if (L.length) openSheet("pesDel", {d:L}); },
   mois(d){ S.ui.mois = addMonths(S.ui.mois,+d.n); render(); },
   semaine(d){ S.ui.ecoleWeek = addDays(S.ui.ecoleWeek,+d.n); render(); },
   agDay(d){ S.ui.agendaDay=d.d; render(); },
@@ -2194,7 +2224,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261124001919";
+const APP_VERSION = "20261124094931";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
