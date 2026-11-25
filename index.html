@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#09090b">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-jTx921a0CItvo6spcVv1qPSwJRR+8WbCMdwBHZPeDAo='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-XvbwUBOw4byXsqGXmvBIPCNwjZQ5WGSjoktL925+i2I='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -403,8 +403,11 @@ function dayMacros(day){ return (day && day.repas || []).map(mealMacros).reduce(
 
 // Mois budgétaire : il commence le jour de paie (fin de mois). Ce qui est payé juste après la paie compte pour le mois suivant.
 const paieJour = () => { const j = (S.app.config||{}).paieJour; return j>=1 && j<=31 ? j : 25; };
-const moisBudget = d => { const m = monthOf(d), j = +d.slice(8,10); return j >= Math.min(paieJour(), dim(m)) ? addMonths(m,1) : m; };
-const periodeMois = M => { const p = addMonths(M,-1); return {debut: p+"-"+pad(Math.min(paieJour(), dim(p))), fin: addDays(M+"-"+pad(Math.min(paieJour(), dim(M))), -1)}; };
+// Un mois de budget commence le jour de paie ; si tu as noté « argent reçu » un autre jour, c'est ce jour-là qui compte.
+const debutMois = M => { const r = (S.mois[M]||{}).recuLe; if (r) return r; const p = addMonths(M,-1); return p+"-"+pad(Math.min(paieJour(), dim(p))); };
+const periodeMois = M => ({debut: debutMois(M), fin: addDays(debutMois(addMonths(M,1)), -1)});
+const moisBudget = d => { const m = monthOf(d), j = +d.slice(8,10); let M = j >= Math.min(paieJour(), dim(m)) ? addMonths(m,1) : m;
+  if (d < debutMois(M)) M = addMonths(M,-1); else if (d >= debutMois(addMonths(M,1))) M = addMonths(M,1); return M; };
 const soldeDispo = () => { const s0 = (S.app.config||{}).solde; return s0 && typeof s0.montant==="number" ? s0 : null; };
 function finance(M){
   const P = periodeMois(M), inP = d => d && d>=P.debut && d<=P.fin;
@@ -933,7 +936,9 @@ VIEWS.argent = { title:"Argent", body(){
   h += seg("argentTab", S.ui.argentTab, [["resume","Résumé"],["fixes","Mensuel"],["nouvelles","Factures"],["achats","Achats"],["dettes","On me doit"],["depenses","Dépenses"]]).replace('class="seg seg-s"','class="seg seg-g3"');
   if (loading("fixes")) return h+'<div class="empty">Chargement…</div>';
   if (S.ui.argentTab==="resume"){
-    const so = soldeDispo();
+    const so = soldeDispo(), rc = S.mois[M] && S.mois[M].recuLe;
+    h += rc ? '<div class="row" style="justify-content:space-between"><span class="chip good">Paie reçue le '+fShort(rc)+(F.revenu!=null?' · '+chf0(F.revenu):'')+'</span><button class="btn sm ghost" data-act="sheet" data-s="paie">Modifier</button></div>'
+      : '<button class="btn pri full" data-act="sheet" data-s="paie">J\'ai reçu mon argent</button>';
     h += '<section class="card tap" data-act="sheet" data-s="solde" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Argent disponible</span><span class="small muted">'+(so?'màj '+fShort(so.date):'')+'</span></div><div class="big num">'+(so?chf(so.montant):'–')+'</div>'+
       (so ? '<div class="small muted">Après ce qu\'il reste à payer ce mois : <b class="num '+(so.montant-F.reste<0?'up':'')+'">'+chf(so.montant-F.reste)+'</b></div>' : '<div class="small muted">Touche pour entrer l\'argent que tu as actuellement.</div>')+'</section>';
     h += '<section class="card"><div class="card-h"><span class="eyebrow">Reste à payer</span><button class="btn sm" data-act="sheet" data-s="revenu">'+(F.revenu==null?"Saisir le revenu":"Revenu "+chf0(F.revenu))+'</button></div><div class="big num">'+chf(F.reste)+'</div>';
@@ -1239,6 +1244,19 @@ SHEETS.revenu = { html(){ const M = S.ui.mois; const r = S.mois[M]&&S.mois[M].re
   async save(){ const M = S.ui.mois, o = {...(S.mois[M]||{}), revenu:num(val("s-rev"))}; delete o.id; await put("mois/"+M, o);
     const j = num(val("s-paie")); if (j>=1 && j<=31 && j!==paieJour()){ const cfg = {...(S.app.config||{})}; delete cfg.id; cfg.paieJour = j; await put("app/config", cfg); S.ui.moisInit = false; }
     toast("Enregistré"); } };
+// Paie reçue : ouvre le nouveau mois (factures mensuelles à zéro), note le revenu et peut l'ajouter à l'argent disponible.
+const moisDePaie = d => +d.slice(8,10) >= 15 ? addMonths(monthOf(d),1) : monthOf(d);
+SHEETS.paie = { html(){ const d0 = today(), M = moisDePaie(d0), m = S.mois[M]||{}, so = soldeDispo(), deja = !!m.recuLe;
+  return '<h2 class="h2">'+(deja?'Paie de '+fMonth(M):'J\'ai reçu mon argent')+'</h2>'+
+    '<div class="grid2">'+fld("s-pm","Montant reçu (CHF)",m.revenu??"",'inputmode="decimal" placeholder="2400"')+fld("s-pd","Reçu le",m.recuLe||d0,'type="date"')+'</div>'+
+    (deja ? '' : '<label class="row small" style="gap:8px"><input type="checkbox" id="s-padd" checked> Ajouter à l\'argent disponible'+(so?' ('+chf0(so.montant)+' actuellement)':'')+'</label>')+
+    '<div class="hint">Le mois de '+fMonth(M)+' commence ce jour-là : tes factures mensuelles repartent à zéro (à payer, avec les montants du mois passé à ajuster si besoin) et le revenu du mois est enregistré. Le mois précédent garde son historique.</div>'+sheetBtns(false); },
+  async save(){ const v = num(val("s-pm")), d = val("s-pd") || today(); if (v==null || v<=0) return toast("Entre le montant reçu.", true);
+    const M = moisDePaie(d), m = {...(S.mois[M]||{})}, deja = !!m.recuLe; delete m.id;
+    m.revenu = v; m.recuLe = d; if (!deja){ m.payes = {}; const prev = (S.mois[addMonths(M,-1)]||{}).montants || {}; m.montants = {...prev, ...(m.montants||{})}; }
+    await put("mois/"+M, m);
+    const add = document.getElementById("s-padd"); if (add && add.checked){ const so = soldeDispo(), cfg = {...(S.app.config||{})}; delete cfg.id; cfg.solde = {montant:Math.round(((so?so.montant:0)+v)*100)/100, date:d}; await put("app/config", cfg); }
+    S.ui.mois = M; S.ui.argentTab = "resume"; toast(deja ? "Paie mise à jour" : "Paie notée · "+fMonth(M)+" commence, factures mensuelles à payer"); } };
 SHEETS.solde = { html(){ const so = soldeDispo();
   return '<h2 class="h2">Argent disponible</h2>'+fld("s-solde","Montant actuel (CHF)",so?so.montant:"",'inputmode="decimal" placeholder="1250"')+'<div class="hint">Ce que tu as sur ton compte maintenant. L\'app affiche aussi ce qu\'il te reste une fois les paiements du mois réglés.</div>'+sheetBtns(false); },
   async save(){ const v = num(val("s-solde")); if (v==null) return toast("Entre un montant.", true);
@@ -2224,7 +2242,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261124094931";
+const APP_VERSION = "20261125122202";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
