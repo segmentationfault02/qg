@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#09090b">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-XvbwUBOw4byXsqGXmvBIPCNwjZQ5WGSjoktL925+i2I='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-muJ0Rnzt5I7fYGindYoix94A/ot0SGgVjAqWb0nL0EQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -266,7 +266,7 @@ const sum = (a,f) => a.reduce((s,x)=>s+(f(x)||0),0);
 const S = {
   db:null, dl:null, dbState:"loading",
   loaded:{},
-  app:{}, journal:{}, aliments:{}, achats:[], dettes:[], phases:[], seancesHist:[], sante:{}, poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
+  app:{}, journal:{}, aliments:{}, achats:[], dettes:[], phases:[], seancesHist:[], sante:{}, poids:{}, mesures:{}, tension:{}, riz:[], fixes:[], factures:[], depenses:[], stock:[], mois:{}, agenda:{}, notes:[], semaines:{}, dietHist:[],
   view:"accueil", sheet:null,
   ui:{ agendaDay:today(), mois:monthOf(today()), poidsRange:60, dietTab:"jour", dietType:null, jourDiet:today(), typeArm:null, corpsTab:"poids", argentTab:"resume", ecoleWeek:mondayOf(today()), riz:{} }
 };
@@ -437,6 +437,17 @@ function dueSoon(){
   S.factures.forEach(f=>{ if(!f.paye && f.echeance && f.echeance<=lim) items.push({nom:f.nom, montant:f.montant, d:f.echeance}); });
   return items.sort((a,b)=>a.d<b.d?-1:1);
 }
+// Factures encore à payer pour le mois M (mensuelles + ponctuelles), triées par échéance.
+const aPayerMois = M => { const F = finance(M), k = x => x.d || "9";
+  return F.fixes.filter(f=>!f.paye).map(f=>({nom:f.nom, montant:f.montant, d:f.echeance, s:"montantMois", act:"fixePaye", id:f.id}))
+    .concat(F.fact.filter(f=>!f.paye).map(f=>({nom:f.nom, montant:f.montant, d:f.echeance, s:"facture", act:"facturePaye", id:f.id})))
+    .sort((a,b)=>k(a)<k(b)?-1:k(a)>k(b)?1:0); };
+const echChip = (x, t) => '<span class="chip'+(x.d&&x.d<t?' bad':'')+'" style="white-space:nowrap">'+(x.d?(x.d<t?"En retard":fShort(x.d)):"ce mois")+'</span>';
+// Stock : articles rangés par catégorie, alerte quand la quantité descend au seuil.
+const stockCats = () => [...new Set(["Diet","Produits"].concat(S.stock.map(x=>x.categorie||"Divers")))];
+const stockBas = x => typeof x.seuil==="number" && (x.qte||0) <= x.seuil;
+const qteTxt = x => String(Math.round((x.qte||0)*100)/100).replace(".",",")+(x.unite?" "+x.unite:"");
+const depCats = () => [...new Set(["iHerb","HSN","Produits"].concat(S.depenses.map(d=>d.categorie).filter(Boolean)))];
 function weekDoc(mon){ return S.semaines[mon] || {jours:{}}; }
 
 /* ---------- composants ---------- */
@@ -587,12 +598,14 @@ VIEWS.accueil = { title:"QG", body(){
   h += '</section>';
 
   B.diet = h; h = "";
-  // Argent
-  h += '<section class="card tap" data-act="go" data-v="argent" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Argent · '+fMonth(moisBudget(t))+'</span>'+(F.sansMontant?'<span class="chip warn">'+F.sansMontant+' montant(s) à saisir</span>':'')+'</div>';
-  { const so = soldeDispo(); if (so) h += '<div class="small muted">Argent disponible : <b class="num">'+chf0(so.montant)+'</b> · après paiements : <b class="num">'+chf0(so.montant-F.reste)+'</b></div>'; }
-  h += '<div class="grid2"><div class="stat"><span class="k">Reste à payer</span><span class="v num">'+chf0(F.reste)+'</span></div><div class="stat"><span class="k">Reste à vivre</span><span class="v num">'+(F.vivre==null?"–":chf0(F.vivre))+'</span></div></div>';
-  if (due.length) h += '<div class="list">'+due.slice(0,4).map(d=>'<div class="li"><span class="chip '+(d.d<t?'bad':'warn')+'">'+(d.d<t?"En retard":fShort(d.d))+'</span><span class="t grow">'+esc(d.nom)+'</span><span class="amt num">'+(typeof d.montant==="number"?chf(d.montant):"–")+'</span></div>').join("")+'</div>';
-  h += '</section>';
+  // Argent : uniquement les factures qui restent à payer ce mois.
+  { const M0 = moisBudget(t), A = aPayerMois(M0), so = soldeDispo(), sb = S.stock.filter(stockBas);
+    h += '<section class="card tap" data-act="go" data-v="argent" style="cursor:pointer"><div class="card-h"><span class="eyebrow">À payer · '+fMonth(M0)+'</span><b class="num">'+chf0(F.reste)+'</b></div>';
+    if (so) h += '<div class="small muted">Argent disponible : <b class="num">'+chf0(so.montant)+'</b> · après factures : <b class="num">'+chf0(so.montant-F.reste)+'</b></div>';
+    h += A.length ? '<div class="list">'+A.slice(0,6).map(x=>'<div class="li">'+echChip(x,t)+'<span class="t grow">'+esc(x.nom)+'</span><span class="amt num">'+(typeof x.montant==="number"?chf(x.montant):'<span class="chip warn">montant ?</span>')+'</span></div>').join("")+'</div>'+(A.length>6?'<div class="small muted">+ '+(A.length-6)+' autre'+(A.length>7?'s':'')+'</div>':'')
+      : '<div class="small muted">Toutes les factures du mois sont payées.</div>';
+    if (sb.length) h += '<div class="small muted">Stock bas : '+sb.length+' article'+(sb.length>1?'s':'')+'</div>';
+    h += '</section>'; }
 
   B.argent = h; h = "";
   // École
@@ -931,49 +944,43 @@ const rzv = (id, def) => esc(S.ui.riz[id]!=null ? S.ui.riz[id] : def);
 /* ---------- ARGENT ---------- */
 VIEWS.argent = { title:"Argent", body(){
   if (!S.ui.moisInit && S.app.config){ S.ui.mois = moisBudget(today()); S.ui.moisInit = true; }
-  const M = S.ui.mois, F = finance(M), P = periodeMois(M);
-  let h = '<div class="spread"><button class="icon-btn" data-act="mois" data-n="-1" aria-label="Mois précédent">‹</button><div style="text-align:center"><h2 class="h2 cap">'+fMonth(M)+'</h2><div class="small muted">du '+fShort(P.debut)+' au '+fShort(P.fin)+'</div></div><button class="icon-btn" data-act="mois" data-n="1" aria-label="Mois suivant">›</button></div>';
-  h += seg("argentTab", S.ui.argentTab, [["resume","Résumé"],["fixes","Mensuel"],["nouvelles","Factures"],["achats","Achats"],["dettes","On me doit"],["depenses","Dépenses"]]).replace('class="seg seg-s"','class="seg seg-g3"');
+  if (S.ui.argentTab==="nouvelles") S.ui.argentTab = "fixes";
+  const M = S.ui.mois, F = finance(M), P = periodeMois(M), t = today(), tab = S.ui.argentTab;
+  let h = '';
+  if (tab!=="stock" && tab!=="achats" && tab!=="dettes") h += '<div class="spread"><button class="icon-btn" data-act="mois" data-n="-1" aria-label="Mois précédent">‹</button><div style="text-align:center"><h2 class="h2 cap">'+fMonth(M)+'</h2><div class="small muted">du '+fShort(P.debut)+' au '+fShort(P.fin)+'</div></div><button class="icon-btn" data-act="mois" data-n="1" aria-label="Mois suivant">›</button></div>';
+  h += seg("argentTab", tab, [["resume","Résumé"],["fixes","Factures"],["dettes","On me doit"],["depenses","Dépenses"],["achats","Achats"],["stock","Stock"]]).replace('class="seg seg-s"','class="seg seg-g3"');
   if (loading("fixes")) return h+'<div class="empty">Chargement…</div>';
-  if (S.ui.argentTab==="resume"){
-    const so = soldeDispo(), rc = S.mois[M] && S.mois[M].recuLe;
+  const fRow = f => { const late = !f.paye && f.echeance && f.echeance<t;
+    return '<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"facturePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="facture" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.echeance?"échéance "+fShort(f.echeance):"sans échéance")+'</div></div>'+(late?'<span class="chip bad">En retard</span>':'')+'<span class="amt num">'+chf(f.montant)+'</span></div>'; };
+  if (tab==="resume"){
+    const so = soldeDispo(), rc = S.mois[M] && S.mois[M].recuLe, A = aPayerMois(M), tot = F.tF+F.tFa, dus = S.dettes.filter(x=>!x.rembourse);
     h += rc ? '<div class="row" style="justify-content:space-between"><span class="chip good">Paie reçue le '+fShort(rc)+(F.revenu!=null?' · '+chf0(F.revenu):'')+'</span><button class="btn sm ghost" data-act="sheet" data-s="paie">Modifier</button></div>'
       : '<button class="btn pri full" data-act="sheet" data-s="paie">J\'ai reçu mon argent</button>';
     h += '<section class="card tap" data-act="sheet" data-s="solde" style="cursor:pointer"><div class="card-h"><span class="eyebrow">Argent disponible</span><span class="small muted">'+(so?'màj '+fShort(so.date):'')+'</span></div><div class="big num">'+(so?chf(so.montant):'–')+'</div>'+
-      (so ? '<div class="small muted">Après ce qu\'il reste à payer ce mois : <b class="num '+(so.montant-F.reste<0?'up':'')+'">'+chf(so.montant-F.reste)+'</b></div>' : '<div class="small muted">Touche pour entrer l\'argent que tu as actuellement.</div>')+'</section>';
-    h += '<section class="card"><div class="card-h"><span class="eyebrow">Reste à payer</span><button class="btn sm" data-act="sheet" data-s="revenu">'+(F.revenu==null?"Saisir le revenu":"Revenu "+chf0(F.revenu))+'</button></div><div class="big num">'+chf(F.reste)+'</div>';
-    const pct = F.total ? Math.round(F.paye/F.total*100) : 0;
-    h += '<div class="bar"><i style="width:'+pct+'%;background:var(--good)"></i></div><div class="small muted">'+chf0(F.paye)+' réglés sur '+chf0(F.total)+' engagés ce mois</div>';
-    h += '<div class="grid2"><div class="stat"><span class="k">Reste à vivre</span><span class="v num '+(F.vivre!=null&&F.vivre<0?"up":"")+'">'+(F.vivre==null?"–":chf0(F.vivre))+'</span></div><div class="stat"><span class="k">Coût du fit</span><span class="v num">'+chf0(F.fit)+'</span></div><div class="stat"><span class="k">Dépenses évitables</span><span class="v num">'+chf0(F.evitable)+'</span></div><div class="stat"><span class="k">Dépenses variables</span><span class="v num">'+chf0(F.tD)+'</span></div></div>';
-    if (F.sansMontant) h += '<div class="banner">'+F.sansMontant+' paiement(s) mensuel(s) sans montant pour ce mois. Entre-les dans l\'onglet Mensuel.</div>';
-    { const dus = S.dettes.filter(x=>!x.rembourse); if (dus.length) h += '<div class="small muted">On te doit : '+chf(sum(dus,x=>x.montant))+' ('+dus.length+' personne'+(dus.length>1?'s':'')+')</div>'; }
-    if (F.nbAchats) h += '<div class="small muted">À acheter : '+F.nbAchats+' article(s)'+(F.achats?' · '+chf0(F.achats)+' estimés':'')+'</div>';
+      (so ? '<div class="small muted">Après les factures qui restent : <b class="num '+(so.montant-F.reste<0?'up':'')+'">'+chf(so.montant-F.reste)+'</b></div>' : '<div class="small muted">Touche pour entrer l\'argent que tu as actuellement.</div>')+'</section>';
+    h += '<section class="card"><div class="card-h"><span class="eyebrow">Reste à payer</span><button class="btn sm" data-act="sheet" data-s="facture">+ Facture</button></div><div class="big num">'+chf(F.reste)+'</div>';
+    if (tot) h += '<div class="bar"><i style="width:'+Math.round((tot-F.reste)/tot*100)+'%;background:var(--good)"></i></div><div class="small muted">'+chf0(tot-F.reste)+' payés sur '+chf0(tot)+' de factures ce mois</div>';
+    h += A.length ? '<div class="list">'+A.map(x=>'<div class="li">'+chk(false,x.act,'data-id="'+x.id+'"')+'<span class="t grow tap" data-act="sheet" data-s="'+x.s+'" data-id="'+x.id+'" style="cursor:pointer;min-width:0">'+esc(x.nom)+'</span>'+echChip(x,t)+'<span class="amt num">'+(typeof x.montant==="number"?chf(x.montant):'<span class="chip warn">montant ?</span>')+'</span></div>').join("")+'</div><div class="hint">Coche une facture quand elle est payée.</div>'
+      : '<div class="small muted">Toutes les factures du mois sont payées.</div>';
     h += '</section>';
-    const cs = Object.entries(F.parCat).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]); const mx = cs.length?cs[0][1]:1;
-    h += '<section class="card"><span class="eyebrow">Par catégorie</span>'+(cs.length?cs.map(([c,v])=>'<div class="stack" style="gap:4px"><div class="spread small"><span>'+esc(c)+'</span><span class="num" style="font-weight:600">'+chf(v)+'</span></div><div class="bar"><i style="width:'+Math.max(3,v/mx*100)+'%"></i></div></div>').join(""):'<div class="empty">Rien d\'engagé ce mois.</div>')+'</section>';
-    h += '<button class="btn pri full" data-act="sheet" data-s="depense">+ Nouvelle dépense</button>';
+    h += '<div class="grid2"><div class="stat tap" data-act="sheet" data-s="paie" style="cursor:pointer"><span class="k">Reçu ce mois</span><span class="v num">'+(F.revenu==null?"–":chf0(F.revenu))+'</span></div>'+
+      '<div class="stat"><span class="k">Revenu − factures</span><span class="v num '+(F.revenu!=null&&F.revenu-tot<0?'up':'')+'">'+(F.revenu==null?"–":chf0(F.revenu-tot))+'</span></div>'+
+      '<div class="stat tap" data-act="argentTab" data-k="dettes" style="cursor:pointer"><span class="k">On me doit</span><span class="v num">'+chf0(sum(dus,x=>x.montant))+'</span></div>'+
+      '<div class="stat tap" data-act="argentTab" data-k="depenses" style="cursor:pointer"><span class="k">Grosses dépenses</span><span class="v num">'+chf0(F.tD)+'</span></div></div>';
     return h;
   }
-  if (S.ui.argentTab==="fixes"){
+  if (tab==="fixes"){
     h += '<section class="card"><div class="card-h"><span class="eyebrow">Chaque mois · '+chf0(F.tF)+'</span><button class="btn sm pri" data-act="sheet" data-s="fixe">+ Ajouter</button></div>';
-    h += F.fixes.length ? '<div class="list">'+F.fixes.sort((a,b)=>(a.jour||99)-(b.jour||99)||String(a.nom).localeCompare(String(b.nom),"fr")).map(f=>'<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"fixePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="montantMois" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.jour?"le "+f.jour+" · ":"")+esc(f.categorie||"")+'</div></div><button class="amt num" style="border:0;background:none;padding:0" data-act="sheet" data-s="montantMois" data-id="'+f.id+'">'+(typeof f.montant==="number"?chf(f.montant):'<span class="chip warn">montant ?</span>')+'</button></div>').join("")+'</div>' : '<div class="empty">Aucun paiement mensuel.</div>';
-    h += '<div class="hint">Touche une ligne pour entrer le montant de '+fMonth(M)+'. Coche quand c\'est payé.</div></section>';
-    return h;
-  }
-  if (S.ui.argentTab==="nouvelles"){
+    h += F.fixes.length ? '<div class="list">'+F.fixes.sort((a,b)=>(a.jour||99)-(b.jour||99)||String(a.nom).localeCompare(String(b.nom),"fr")).map(f=>'<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"fixePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="montantMois" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.jour?"le "+f.jour:"")+'</div></div><button class="amt num" style="border:0;background:none;padding:0" data-act="sheet" data-s="montantMois" data-id="'+f.id+'">'+(typeof f.montant==="number"?chf(f.montant):'<span class="chip warn">montant ?</span>')+'</button></div>').join("")+'</div>' : '<div class="empty">Aucune facture mensuelle.</div>';
+    h += '<div class="hint">Touche une ligne pour ajuster le montant de '+fMonth(M)+'. Coche quand c\'est payé.</div></section>';
     const aPayer = S.factures.filter(f=>!f.paye), payees = S.factures.filter(f=>f.paye && (f.payeLe?moisBudget(f.payeLe):f.mois)===M);
-    const fRow = f => { const late = !f.paye && f.echeance && f.echeance<today();
-      return '<div class="li'+(f.paye?' done':'')+'">'+chk(f.paye,"facturePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="facture" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.echeance?"échéance "+fShort(f.echeance)+" · ":"")+esc(f.categorie||"")+'</div></div>'+(late?'<span class="chip bad">En retard</span>':'')+'<span class="amt num">'+chf(f.montant)+'</span></div>'; };
-    h += '<section class="card"><div class="card-h"><span class="eyebrow">À payer · '+chf0(sum(aPayer,f=>f.montant))+'</span><button class="btn sm pri" data-act="sheet" data-s="facture">+ Ajouter</button></div>';
-    h += aPayer.length ? '<div class="list">'+aPayer.sort((a,b)=>(a.echeance||"9")<(b.echeance||"9")?-1:1).map(fRow).join("")+'</div>' : '<div class="empty">Aucune facture en attente.</div>';
-    h += '</section><section class="card"><span class="eyebrow">Payées en '+fMonth(M)+' · '+chf0(sum(payees,f=>f.montant))+'</span>'+(payees.length?'<div class="list">'+payees.map(fRow).join("")+'</div>':'<div class="small muted">Rien de payé ce mois.</div>')+'</section>';
-    return h;
-    h += F.fact.length ? '<div class="list">'+F.fact.sort((a,b)=>(a.echeance||"")<(b.echeance||"")?-1:1).map(f=>{ const late = !f.paye && f.echeance && f.echeance<today();
-      return '<div class="li">'+chk(f.paye,"facturePaye",'data-id="'+f.id+'"')+'<div class="grow tap" data-act="sheet" data-s="facture" data-id="'+f.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(f.nom)+'</div><div class="small muted">'+(f.echeance?"échéance "+fShort(f.echeance)+" · ":"")+esc(f.categorie||"")+'</div></div>'+(late?'<span class="chip bad">En retard</span>':'')+'<span class="amt num">'+chf(f.montant)+'</span></div>'; }).join("")+'</div>' : '<div class="empty">Aucune nouvelle facture ce mois. Une commande Zalando, une amende, un achat en ligne : ajoute-la ici.</div>';
+    h += '<section class="card"><div class="card-h"><span class="eyebrow">Autres factures · '+chf0(sum(aPayer,f=>f.montant))+'</span><button class="btn sm pri" data-act="sheet" data-s="facture">+ Ajouter</button></div>';
+    h += aPayer.length ? '<div class="list">'+aPayer.sort((a,b)=>(a.echeance||"9")<(b.echeance||"9")?-1:1).map(fRow).join("")+'</div>' : '<div class="empty">Aucune facture en attente. Une amende, une commande à payer, un rappel : ajoute-la ici.</div>';
     h += '</section>';
+    if (payees.length) h += '<section class="card"><span class="eyebrow">Payées en '+fMonth(M)+' · '+chf0(sum(payees,f=>f.montant))+'</span><div class="list">'+payees.map(fRow).join("")+'</div></section>';
     return h;
   }
-  if (S.ui.argentTab==="dettes"){
+  if (tab==="dettes"){
     const L = S.dettes.slice().sort((x,y)=>(x.rembourse?1:0)-(y.rembourse?1:0)||(y.cree||"").localeCompare(x.cree||"")), dus = L.filter(x=>!x.rembourse);
     h += '<section class="card"><span class="eyebrow">On me doit</span><div class="big num">'+chf(sum(dus,x=>x.montant))+'</div><div class="small muted">'+(dus.length?dus.length+' personne'+(dus.length>1?'s':'')+' à rembourser':'Personne ne te doit rien.')+'</div></section>';
     h += '<button class="btn pri full" data-act="sheet" data-s="dette">+ Quelqu\'un me doit</button>';
@@ -982,7 +989,7 @@ VIEWS.argent = { title:"Argent", body(){
       h += '</section>'; }
     return h;
   }
-  if (S.ui.argentTab==="achats"){
+  if (tab==="achats"){
     const B = boutiques();
     h += '<button class="btn pri full" data-act="sheet" data-s="achat">+ Article à acheter</button>';
     B.forEach(b=>{ const L = S.achats.filter(a=>(a.boutique||"Autre")===b).sort((x,y)=>(x.achete?1:0)-(y.achete?1:0)||(x.cree||"").localeCompare(y.cree||""));
@@ -993,8 +1000,26 @@ VIEWS.argent = { title:"Argent", body(){
       h += '</section>'; });
     return h;
   }
-  h += '<button class="btn pri full" data-act="sheet" data-s="depense">+ Nouvelle dépense</button>';
-  h += '<section class="card"><span class="eyebrow">Dépenses · '+chf0(F.tD)+'</span>'+(F.dep.length?'<div class="list">'+F.dep.sort((a,b)=>(b.date||"")<(a.date||"")?-1:1).map(d=>'<div class="li tap" data-act="sheet" data-s="depense" data-id="'+d.id+'"><span class="chip">'+fShort(d.date)+'</span><div class="grow" style="min-width:0"><div class="t">'+esc(d.note||d.categorie)+'</div><div class="small muted">'+esc(d.categorie)+(d.evitable?' · évitable':'')+'</div></div><span class="amt num">'+chf(d.montant)+'</span></div>').join("")+'</div>':'<div class="empty">Aucune dépense notée ce mois.</div>')+'</section>';
+  if (tab==="stock"){
+    if (loading("stock")) return h+'<div class="empty">Chargement…</div>';
+    h += '<button class="btn pri full" data-act="sheet" data-s="stock">+ Ajouter au stock</button>';
+    if (!S.stock.length) return h+'<div class="empty">Rien en stock pour l\'instant. Ajoute tes articles par catégorie (Diet, Produits…) pour savoir ce qu\'il te reste.</div>';
+    const C = stockCats().filter(c=>S.stock.some(x=>(x.categorie||"Divers")===c)), f = C.includes(S.ui.stF) ? S.ui.stF : "", bas = S.stock.filter(stockBas);
+    if (bas.length) h += '<div class="banner">Stock bas : '+esc(bas.map(x=>x.nom).join(", "))+'</div>';
+    const chip = (k,l) => '<button type="button" class="chip" style="border:0;cursor:pointer;'+(f===k?'background:var(--accent);color:var(--on-accent)':'')+'" data-act="stF" data-k="'+esc(k)+'">'+esc(l)+'</button>';
+    if (C.length > 1) h += '<div class="row wrap-r" style="gap:6px">'+chip("","Tout")+C.map(c=>chip(c,c)).join("")+'</div>';
+    (f?[f]:C).forEach(c=>{ const L = S.stock.filter(x=>(x.categorie||"Divers")===c).sort((a,b)=>String(a.nom).localeCompare(String(b.nom),"fr"));
+      h += '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(c)+' · '+L.length+'</span><button class="btn sm" data-act="sheet" data-s="stock" data-c="'+esc(c)+'">+</button></div><div class="list">'+L.map(x=>'<div class="li"><div class="grow tap" data-act="sheet" data-s="stock" data-id="'+x.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(x.nom)+'</div>'+(x.note?'<div class="small muted">'+esc(x.note)+'</div>':'')+'</div>'+(stockBas(x)?'<span class="chip warn">Bas</span>':'')+
+        '<div class="row" style="gap:6px;flex:none"><button class="icon-btn" data-act="stQ" data-id="'+x.id+'" data-n="-1" aria-label="En retirer un">−</button><span class="num" style="min-width:56px;text-align:center;font-weight:600;white-space:nowrap">'+esc(qteTxt(x))+'</span><button class="icon-btn" data-act="stQ" data-id="'+x.id+'" data-n="1" aria-label="En ajouter un">+</button></div></div>').join("")+'</div></section>'; });
+    h += '<div class="hint">− quand tu entames ou finis un article, + quand tu en rachètes. Touche un article pour le modifier ou l\'ajouter à ta liste d\'achats.</div>';
+    return h;
+  }
+  const D = F.dep.slice().sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
+  h += '<button class="btn pri full" data-act="sheet" data-s="depense">+ Grosse dépense</button>';
+  h += '<section class="card"><span class="eyebrow">Grosses dépenses · '+chf0(F.tD)+'</span>'+(D.length?'<div class="list">'+D.map(d=>'<div class="li tap" data-act="sheet" data-s="depense" data-id="'+d.id+'" style="cursor:pointer"><span class="chip">'+fShort(d.date)+'</span><div class="grow" style="min-width:0"><div class="t">'+esc(d.note||d.categorie||"Dépense")+'</div>'+(d.note&&d.categorie?'<div class="small muted">'+esc(d.categorie)+'</div>':'')+'</div><span class="amt num">'+chf(d.montant)+'</span></div>').join("")+'</div>':'<div class="empty">Aucune grosse dépense ce mois.</div>')+'</section>';
+  { const pc = {}; D.forEach(d=>{ const c = d.categorie||"Divers"; pc[c] = (pc[c]||0)+(d.montant||0); }); const cs = Object.entries(pc).sort((a,b)=>b[1]-a[1]);
+    if (cs.length > 1) h += '<section class="card"><span class="eyebrow">Par catégorie</span><div class="list">'+cs.map(([c,v])=>'<div class="li"><span class="t grow">'+esc(c)+'</span><span class="amt num">'+chf(v)+'</span></div>').join("")+'</div></section>'; }
+  h += '<div class="hint">Seulement les gros achats (iHerb, HSN, produits…). Pas besoin de noter les courses.</div>';
   return h;
 }};
 
@@ -1234,10 +1259,23 @@ SHEETS.facture = { html(ds){ const f = ds.id ? S.factures.find(x=>x.id===ds.id)|
 
 SHEETS.depense = { html(ds){ const d = ds.id ? S.depenses.find(x=>x.id===ds.id)||{} : {};
   const defDate = d.date || (moisBudget(today())===S.ui.mois ? today() : periodeMois(S.ui.mois).debut);
-  return '<h2 class="h2">'+(ds.id?"Dépense":"Nouvelle dépense")+'</h2><div class="grid2">'+fld("s-montant","Montant (CHF)",d.montant,'inputmode="decimal" placeholder="24.90"')+fld("s-date","Date",defDate,'type="date"')+'</div>'+catSel("s-cat",d.categorie||"Bouffe")+fld("s-note","Note",d.note,'placeholder="Migros, Coop, resto…"')+'<label class="row small" style="gap:8px"><input type="checkbox" id="s-evit"'+(d.evitable?" checked":"")+' style="width:20px;height:20px"> Dépense évitable</label>'+sheetBtns(!!ds.id); },
+  return '<h2 class="h2">'+(ds.id?"Grosse dépense":"Nouvelle grosse dépense")+'</h2>'+fld("s-note","Quoi",d.note,'placeholder="Commande iHerb"')+'<div class="grid2">'+fld("s-montant","Montant (CHF)",d.montant,'inputmode="decimal" placeholder="124.90"')+fld("s-date","Date",defDate,'type="date"')+'</div>'+
+    fld("s-cat","Catégorie",d.categorie||"",'list="s-catl" placeholder="iHerb, HSN, Produits…" autocapitalize="sentences"')+'<datalist id="s-catl">'+depCats().map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist>'+sheetBtns(!!ds.id); },
   async save(ds){ const m = num(val("s-montant")); if (m==null) return toast("Entre un montant.",true); const id = ds.id||uid();
-    await put("depenses/"+id, {id, montant:m, date:val("s-date")||today(), categorie:val("s-cat"), note:val("s-note").trim(), evitable:document.getElementById("s-evit").checked}); toast("Dépense enregistrée"); },
+    await put("depenses/"+id, {id, montant:m, date:val("s-date")||today(), categorie:val("s-cat").trim()||"Divers", note:val("s-note").trim()}); toast("Dépense enregistrée"); },
   async del(ds){ await rm("depenses/"+ds.id); toast("Dépense supprimée"); } };
+
+SHEETS.stock = { html(ds){ const x = ds.id ? S.stock.find(y=>y.id===ds.id)||{} : {}, c = x.categorie || ds.c || S.ui.stF || "Diet";
+  return '<h2 class="h2">'+(ds.id?esc(x.nom):"Ajouter au stock")+'</h2>'+fld("s-sn","Article",x.nom,'placeholder="Whey HSN 2 kg"')+
+    fld("s-sc","Catégorie",c,'list="s-scl" placeholder="Diet, Produits…" autocapitalize="sentences"')+'<datalist id="s-scl">'+stockCats().map(k=>'<option value="'+esc(k)+'">').join("")+'</datalist>'+
+    '<div class="grid2">'+fld("s-sq","Quantité",x.qte??1,'inputmode="decimal"')+fld("s-su","Unité (facultatif)",x.unite||"",'placeholder="pots, fioles, kg…"')+'</div>'+
+    fld("s-ss","Alerte quand il en reste (facultatif)",x.seuil??"",'inputmode="decimal" placeholder="1"')+fld("s-sno","Note (facultatif)",x.note||"",'placeholder="entamé le 12 nov."')+
+    (ds.id?'<button type="button" class="btn ghost full" data-act="stAchat" data-id="'+x.id+'">Ajouter à la liste d\'achats</button>':'')+sheetBtns(!!ds.id); },
+  async save(ds){ const nom = val("s-sn").trim(); if (!nom) return toast("Nom de l\'article obligatoire.",true); const q = num(val("s-sq"));
+    const x = ds.id ? S.stock.find(y=>y.id===ds.id)||{} : {}, id = ds.id||uid(), cat = val("s-sc").trim()||"Divers";
+    await put("stock/"+id, {id, nom, categorie:cat, qte:q==null?0:Math.max(0,q), unite:val("s-su").trim(), seuil:num(val("s-ss")), note:val("s-sno").trim(), maj:today(), cree:x.cree||new Date().toISOString()});
+    if (S.ui.stF && S.ui.stF!==cat) S.ui.stF = ""; toast("Stock enregistré"); },
+  async del(ds){ await rm("stock/"+ds.id); toast("Retiré du stock"); } };
 
 SHEETS.revenu = { html(){ const M = S.ui.mois; const r = S.mois[M]&&S.mois[M].revenu;
   return '<h2 class="h2">Revenu de '+fMonth(M)+'</h2>'+fld("s-rev","Montant (CHF)",r,'inputmode="decimal"')+fld("s-paie","Jour où tu reçois ton argent",paieJour(),'inputmode="numeric" placeholder="25"')+'<div class="hint">Le mois commence ce jour-là : ce que tu paies juste après avoir été payé compte pour le mois suivant (paie du 25 octobre → mois de novembre).</div>'+sheetBtns(false); },
@@ -1501,6 +1539,11 @@ const ACT = {
     if (!(avant!==apres && S.journal[day])) toast("Séance : "+(splitFor(day)||{nom:"?"}).nom);
     render(); },
   argentTab(d){ S.ui.argentTab=d.k; render(); },
+  stF(d){ S.ui.stF = d.k||""; render(); },
+  async stQ(d){ const x = S.stock.find(y=>y.id===d.id); if (!x) return; const q = Math.max(0, Math.round(((x.qte||0)+Number(d.n))*100)/100); if (q===(x.qte||0)) return;
+    try{ await put("stock/"+x.id, {...x, qte:q, maj:today()}); }catch(e){} },
+  async stAchat(d){ const x = S.stock.find(y=>y.id===d.id); if (!x) return; const n = normTxt(x.nom), b = boutiques().find(k=>n.includes(normTxt(k))) || "Autre", id = uid();
+    try{ await put("achats/"+id, {id, nom:x.nom, boutique:b, prix:null, achete:false, cree:new Date().toISOString()}); closeSheet(); toast("Ajouté aux achats ("+b+")"); }catch(e){} },
   poidsRange(d){ S.ui.poidsRange=+d.k; render(); },
   pSel(d){ S.ui.pSel = d.k==="1" ? {} : null; render(); },
   pTog(d){ const s2 = {...(S.ui.pSel||{})}; if (s2[d.d]) delete s2[d.d]; else s2[d.d] = 1; S.ui.pSel = s2; render(); },
@@ -2128,7 +2171,7 @@ function loadExt(){
 /* ================= SYNCHRO (Supabase) ================= */
 const SB_URL = "https://uzaywupafqbkgupnuege.supabase.co";
 const SB_KEY = "sb_publishable_o-WPy3WbBHjzq4tjvN2fEQ_hE4jk1Qb";
-const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","dettes","seances","sante","phases"];
+const COLS = ["app","poids","mesures","tension","riz","fixes","factures","depenses","mois","agenda","notes","ecole_semaines","diet_historique","journal","aliments","achats","dettes","seances","sante","phases","stock"];
 const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:"qg-auth"}}) : null;
 const Store = { rows:{}, subs:{}, uid:null,
   emit(col){ const docs = Object.keys(this.rows).filter(p=>p.startsWith(col+"/")).map(p=>{ const o=this.rows[p]; return {id:p.slice(col.length+1), exists:true, data:()=>o}; });
@@ -2233,7 +2276,7 @@ async function start(session){
 async function launch(session){
   if (started) return; started = true;
   Store.uid = session.user.id; S.db = dbAdapter; S.dbState = "ok"; S.dl = true;
-  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",dettes:"dettes",phases:"phases",seances:"seancesHist",sante:"sante"}[c];
+  COLS.forEach(c=>{ const m = {app:"app",poids:"poids",mesures:"mesures",tension:"tension",riz:"riz",fixes:"fixes",factures:"factures",depenses:"depenses",mois:"mois",agenda:"agenda",notes:"notes",ecole_semaines:"semaines",diet_historique:"dietHist",journal:"journal",aliments:"aliments",achats:"achats",dettes:"dettes",phases:"phases",seances:"seancesHist",sante:"sante",stock:"stock"}[c];
     const asMap = ["app","poids","mesures","tension","mois","agenda","ecole_semaines","journal","aliments","sante"].includes(c);
     sub(c, L => { S[m] = asMap ? byId(L) : L; }); });
   render();
@@ -2242,7 +2285,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261125122202";
+const APP_VERSION = "20261128121357";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
