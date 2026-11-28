@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#09090b">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-muJ0Rnzt5I7fYGindYoix94A/ot0SGgVjAqWb0nL0EQ='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval' 'sha256-eG6+L5f5SIp5tb2taD0RKERma3gztRo9EqbLK737MPc='; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://uzaywupafqbkgupnuege.supabase.co wss://uzaywupafqbkgupnuege.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -445,7 +445,8 @@ const aPayerMois = M => { const F = finance(M), k = x => x.d || "9";
 const echChip = (x, t) => '<span class="chip'+(x.d&&x.d<t?' bad':'')+'" style="white-space:nowrap">'+(x.d?(x.d<t?"En retard":fShort(x.d)):"ce mois")+'</span>';
 // Stock : articles rangés par catégorie, alerte quand la quantité descend au seuil.
 const stockCats = () => [...new Set(["Diet","Produits"].concat(S.stock.map(x=>x.categorie||"Divers")))];
-const stockBas = x => typeof x.seuil==="number" && (x.qte||0) <= x.seuil;
+const enRoute = x => sum(x.cmds||[], c=>c.q);
+const stockBas = x => typeof x.seuil==="number" && (x.qte||0) <= x.seuil && !enRoute(x);
 const qteTxt = x => String(Math.round((x.qte||0)*100)/100).replace(".",",")+(x.unite?" "+x.unite:"");
 const depCats = () => [...new Set(["iHerb","HSN","Produits"].concat(S.depenses.map(d=>d.categorie).filter(Boolean)))];
 function weekDoc(mon){ return S.semaines[mon] || {jours:{}}; }
@@ -1004,14 +1005,21 @@ VIEWS.argent = { title:"Argent", body(){
     if (loading("stock")) return h+'<div class="empty">Chargement…</div>';
     h += '<button class="btn pri full" data-act="sheet" data-s="stock">+ Ajouter au stock</button>';
     if (!S.stock.length) return h+'<div class="empty">Rien en stock pour l\'instant. Ajoute tes articles par catégorie (Diet, Produits…) pour savoir ce qu\'il te reste.</div>';
+    const unite = x => x.unite ? " "+x.unite : "";
+    // Commandes en route, regroupées par commande : « Reçu » ajoute au stock.
+    const R = {}; S.stock.forEach(x=>(x.cmds||[]).forEach(c=>{ const k = c.src||"Commande"; (R[k] = R[k]||[]).push({x, c}); }));
+    Object.entries(R).sort((a,b)=>(a[1][0].c.le||"")<(b[1][0].c.le||"")?-1:1).forEach(([k,L])=>{ const le = L.map(e=>e.c.le).filter(Boolean).sort()[0];
+      h += '<section class="card"><div class="card-h"><div style="min-width:0"><span class="eyebrow">En route · '+esc(k)+'</span>'+(le?'<div class="small muted">commandé le '+fShort(le)+'</div>':'')+'</div><button class="btn sm pri" data-act="stRecuCmd" data-k="'+esc(k)+'">Tout reçu</button></div><div class="list">'+
+        L.map(({x,c})=>'<div class="li"><span class="t grow tap" data-act="sheet" data-s="stock" data-id="'+x.id+'" style="cursor:pointer;min-width:0">'+esc(x.nom)+'</span><span class="num" style="font-weight:600;white-space:nowrap">'+String(c.q).replace(".",",")+esc(unite(x))+'</span><button class="btn sm" data-act="stRecu" data-id="'+x.id+'" data-c="'+esc(c.id)+'">Reçu</button></div>').join("")+'</div></section>'; });
     const C = stockCats().filter(c=>S.stock.some(x=>(x.categorie||"Divers")===c)), f = C.includes(S.ui.stF) ? S.ui.stF : "", bas = S.stock.filter(stockBas);
     if (bas.length) h += '<div class="banner">Stock bas : '+esc(bas.map(x=>x.nom).join(", "))+'</div>';
     const chip = (k,l) => '<button type="button" class="chip" style="border:0;cursor:pointer;'+(f===k?'background:var(--accent);color:var(--on-accent)':'')+'" data-act="stF" data-k="'+esc(k)+'">'+esc(l)+'</button>';
     if (C.length > 1) h += '<div class="row wrap-r" style="gap:6px">'+chip("","Tout")+C.map(c=>chip(c,c)).join("")+'</div>';
     (f?[f]:C).forEach(c=>{ const L = S.stock.filter(x=>(x.categorie||"Divers")===c).sort((a,b)=>String(a.nom).localeCompare(String(b.nom),"fr"));
-      h += '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(c)+' · '+L.length+'</span><button class="btn sm" data-act="sheet" data-s="stock" data-c="'+esc(c)+'">+</button></div><div class="list">'+L.map(x=>'<div class="li"><div class="grow tap" data-act="sheet" data-s="stock" data-id="'+x.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(x.nom)+'</div>'+(x.note?'<div class="small muted">'+esc(x.note)+'</div>':'')+'</div>'+(stockBas(x)?'<span class="chip warn">Bas</span>':'')+
-        '<div class="row" style="gap:6px;flex:none"><button class="icon-btn" data-act="stQ" data-id="'+x.id+'" data-n="-1" aria-label="En retirer un">−</button><span class="num" style="min-width:56px;text-align:center;font-weight:600;white-space:nowrap">'+esc(qteTxt(x))+'</span><button class="icon-btn" data-act="stQ" data-id="'+x.id+'" data-n="1" aria-label="En ajouter un">+</button></div></div>').join("")+'</div></section>'; });
-    h += '<div class="hint">− quand tu entames ou finis un article, + quand tu en rachètes. Touche un article pour le modifier ou l\'ajouter à ta liste d\'achats.</div>';
+      h += '<section class="card"><div class="card-h"><span class="eyebrow">'+esc(c)+' · en stock</span><button class="btn sm" data-act="sheet" data-s="stock" data-c="'+esc(c)+'">+</button></div><div class="list">'+L.map(x=>{ const r = enRoute(x), sub = [r?String(r).replace(".",",")+unite(x)+" en route":"", x.note||""].filter(Boolean).join(" · ");
+        return '<div class="li"><div class="grow tap" data-act="sheet" data-s="stock" data-id="'+x.id+'" style="cursor:pointer;min-width:0"><div class="t">'+esc(x.nom)+'</div>'+(sub?'<div class="small muted">'+esc(sub)+'</div>':'')+'</div>'+(stockBas(x)?'<span class="chip warn">Bas</span>':'')+
+        '<div class="row" style="gap:6px;flex:none"><button class="icon-btn" data-act="stQ" data-id="'+x.id+'" data-n="-1" aria-label="En retirer un">−</button><span class="num" style="min-width:56px;text-align:center;font-weight:600;white-space:nowrap'+((x.qte||0)?'':';opacity:.45')+'">'+esc(qteTxt(x))+'</span><button class="icon-btn" data-act="stQ" data-id="'+x.id+'" data-n="1" aria-label="En ajouter un">+</button></div></div>'; }).join("")+'</div></section>'; });
+    h += '<div class="hint">− quand tu entames ou finis un article, + quand tu en rachètes. Une commande passée se note dans la fiche de l\'article (« Commandé ») et reste en route jusqu\'à ce que tu touches « Reçu ».</div>';
     return h;
   }
   const D = F.dep.slice().sort((a,b)=>(b.date||"")<(a.date||"")?-1:1);
@@ -1265,16 +1273,21 @@ SHEETS.depense = { html(ds){ const d = ds.id ? S.depenses.find(x=>x.id===ds.id)|
     await put("depenses/"+id, {id, montant:m, date:val("s-date")||today(), categorie:val("s-cat").trim()||"Divers", note:val("s-note").trim()}); toast("Dépense enregistrée"); },
   async del(ds){ await rm("depenses/"+ds.id); toast("Dépense supprimée"); } };
 
-SHEETS.stock = { html(ds){ const x = ds.id ? S.stock.find(y=>y.id===ds.id)||{} : {}, c = x.categorie || ds.c || S.ui.stF || "Diet";
+SHEETS.stock = { html(ds){ const x = ds.id ? S.stock.find(y=>y.id===ds.id)||{} : {}, c = x.categorie || ds.c || S.ui.stF || "Diet", K = x.cmds||[];
+  const srcs = [...new Set(S.stock.flatMap(y=>(y.cmds||[]).map(k=>k.src)).filter(Boolean))];
   return '<h2 class="h2">'+(ds.id?esc(x.nom):"Ajouter au stock")+'</h2>'+fld("s-sn","Article",x.nom,'placeholder="Whey HSN 2 kg"')+
     fld("s-sc","Catégorie",c,'list="s-scl" placeholder="Diet, Produits…" autocapitalize="sentences"')+'<datalist id="s-scl">'+stockCats().map(k=>'<option value="'+esc(k)+'">').join("")+'</datalist>'+
-    '<div class="grid2">'+fld("s-sq","Quantité",x.qte??1,'inputmode="decimal"')+fld("s-su","Unité (facultatif)",x.unite||"",'placeholder="pots, fioles, kg…"')+'</div>'+
+    '<div class="grid2">'+fld("s-sq","En stock",ds.id?(x.qte??0):"",'inputmode="decimal" placeholder="0"')+fld("s-su","Unité (facultatif)",x.unite||"",'placeholder="pots, fioles, kg…"')+'</div>'+
+    (K.length ? '<span class="eyebrow">En route</span><div class="list">'+K.map(k=>'<div class="li"><span class="t grow">'+esc(k.src||"Commande")+(k.le?' <span class="small muted">· '+fShort(k.le)+'</span>':'')+'</span><span class="num" style="font-weight:600">'+String(k.q).replace(".",",")+'</span><button type="button" class="btn sm" data-act="stRecu" data-id="'+x.id+'" data-c="'+esc(k.id)+'">Reçu</button><button type="button" class="icon-btn" data-act="stCmdDel" data-id="'+x.id+'" data-c="'+esc(k.id)+'" aria-label="Annuler la commande">×</button></div>').join("")+'</div>' : '')+
+    '<span class="eyebrow">Commandé</span><div class="grid2">'+fld("s-scq","Quantité commandée","",'inputmode="decimal" placeholder="0"')+fld("s-scd","Commandé le",today(),'type="date"')+'</div>'+
+    fld("s-scs","Commande",srcs[0]||"",'list="s-scsl" placeholder="ex. Commande HSN"')+'<datalist id="s-scsl">'+srcs.map(k=>'<option value="'+esc(k)+'">').join("")+'</datalist>'+
     fld("s-ss","Alerte quand il en reste (facultatif)",x.seuil??"",'inputmode="decimal" placeholder="1"')+fld("s-sno","Note (facultatif)",x.note||"",'placeholder="entamé le 12 nov."')+
     (ds.id?'<button type="button" class="btn ghost full" data-act="stAchat" data-id="'+x.id+'">Ajouter à la liste d\'achats</button>':'')+sheetBtns(!!ds.id); },
-  async save(ds){ const nom = val("s-sn").trim(); if (!nom) return toast("Nom de l\'article obligatoire.",true); const q = num(val("s-sq"));
-    const x = ds.id ? S.stock.find(y=>y.id===ds.id)||{} : {}, id = ds.id||uid(), cat = val("s-sc").trim()||"Divers";
-    await put("stock/"+id, {id, nom, categorie:cat, qte:q==null?0:Math.max(0,q), unite:val("s-su").trim(), seuil:num(val("s-ss")), note:val("s-sno").trim(), maj:today(), cree:x.cree||new Date().toISOString()});
-    if (S.ui.stF && S.ui.stF!==cat) S.ui.stF = ""; toast("Stock enregistré"); },
+  async save(ds){ const nom = val("s-sn").trim(); if (!nom) return toast("Nom de l\'article obligatoire.",true); const q = num(val("s-sq")), cq = num(val("s-scq"));
+    const x = ds.id ? S.stock.find(y=>y.id===ds.id)||{} : {}, id = ds.id||uid(), cat = val("s-sc").trim()||"Divers", cmds = (x.cmds||[]).slice();
+    if (cq && cq>0) cmds.push({id:uid(), q:cq, le:val("s-scd")||today(), src:val("s-scs").trim()||"Commande du "+fShort(val("s-scd")||today())});
+    await put("stock/"+id, {...x, id, nom, categorie:cat, qte:q==null?0:Math.max(0,q), unite:val("s-su").trim(), seuil:num(val("s-ss")), note:val("s-sno").trim(), cmds, maj:today(), cree:x.cree||new Date().toISOString()});
+    if (S.ui.stF && S.ui.stF!==cat) S.ui.stF = ""; toast(cq>0 ? "Commande notée, en route" : "Stock enregistré"); },
   async del(ds){ await rm("stock/"+ds.id); toast("Retiré du stock"); } };
 
 SHEETS.revenu = { html(){ const M = S.ui.mois; const r = S.mois[M]&&S.mois[M].revenu;
@@ -1542,6 +1555,13 @@ const ACT = {
   stF(d){ S.ui.stF = d.k||""; render(); },
   async stQ(d){ const x = S.stock.find(y=>y.id===d.id); if (!x) return; const q = Math.max(0, Math.round(((x.qte||0)+Number(d.n))*100)/100); if (q===(x.qte||0)) return;
     try{ await put("stock/"+x.id, {...x, qte:q, maj:today()}); }catch(e){} },
+  async stRecu(d){ const x = S.stock.find(y=>y.id===d.id); if (!x) return; const k = (x.cmds||[]).find(c=>c.id===d.c); if (!k) return;
+    try{ await put("stock/"+x.id, {...x, qte:Math.round(((x.qte||0)+k.q)*100)/100, cmds:x.cmds.filter(c=>c.id!==d.c), recuLe:today(), maj:today()}); if (S.sheet) renderSheet(); toast(x.nom+" reçu"); }catch(e){} },
+  async stRecuCmd(d){ const L = S.stock.filter(x=>(x.cmds||[]).some(c=>(c.src||"Commande")===d.k)); if (!L.length) return;
+    try{ for (const x of L){ const K = x.cmds.filter(c=>(c.src||"Commande")===d.k); await put("stock/"+x.id, {...x, qte:Math.round(((x.qte||0)+sum(K,c=>c.q))*100)/100, cmds:x.cmds.filter(c=>(c.src||"Commande")!==d.k), recuLe:today(), maj:today()}); }
+      toast(d.k+" reçue, ajoutée au stock"); }catch(e){} },
+  async stCmdDel(d){ const x = S.stock.find(y=>y.id===d.id); if (!x) return;
+    try{ await put("stock/"+x.id, {...x, cmds:(x.cmds||[]).filter(c=>c.id!==d.c), maj:today()}); renderSheet(); toast("Commande retirée"); }catch(e){} },
   async stAchat(d){ const x = S.stock.find(y=>y.id===d.id); if (!x) return; const n = normTxt(x.nom), b = boutiques().find(k=>n.includes(normTxt(k))) || "Autre", id = uid();
     try{ await put("achats/"+id, {id, nom:x.nom, boutique:b, prix:null, achete:false, cree:new Date().toISOString()}); closeSheet(); toast("Ajouté aux achats ("+b+")"); }catch(e){} },
   poidsRange(d){ S.ui.poidsRange=+d.k; render(); },
@@ -2285,7 +2305,7 @@ async function launch(session){
   document.addEventListener("visibilitychange", () => { if (!document.hidden) Store.loadAll().then(loadExt).catch(()=>{}); });
 }
 /* ---------- mise à jour automatique de l'app ---------- */
-const APP_VERSION = "20261128121357";
+const APP_VERSION = "20261128122024";
 async function checkUpdate(){
   try { const r = await fetch(location.pathname, {cache:"reload"}); const t = await r.text();
     const m = /const APP_VERSION = "(\d+)"/.exec(t);
